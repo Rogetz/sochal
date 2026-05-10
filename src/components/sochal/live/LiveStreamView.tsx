@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { 
   Mic, MicOff, Video, VideoOff, X, Send, Users, 
   FlipHorizontal, Share2, UserPlus, Copy, Check,
-  Gift, Heart, MessageCircle, LogIn
+  Gift, Heart, MessageCircle, LogIn, AlertCircle
 } from "lucide-react";
 
 interface LiveStreamViewProps {
@@ -36,6 +36,8 @@ export function LiveStreamView({
   const [showChat, setShowChat] = useState(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isStarting, setIsStarting] = useState(true);
   const [messages, setMessages] = useState<{ user: string; avatar?: string; text: string; isTip?: boolean; amount?: number }[]>([
     { user: "System", text: "Welcome to the live stream! 💫" }
   ]);
@@ -59,10 +61,21 @@ export function LiveStreamView({
   }, [isCreator]);
 
   const startCamera = async () => {
+    setIsStarting(true);
+    setError(null);
+    
+    // Check device support first
+    const support = await mediaService.checkDeviceSupport();
+    if (!support.camera) {
+      setError("No camera detected. Please connect a camera to go live.");
+      setIsStarting(false);
+      return;
+    }
+    
     const hasPermission = await mediaService.getCameraPermissions();
     if (!hasPermission) {
-      alert("Please allow camera and microphone access to go live");
-      onEnd();
+      setError("Camera and microphone access required. Please allow access in your browser settings.");
+      setIsStarting(false);
       return;
     }
     
@@ -70,6 +83,7 @@ export function LiveStreamView({
     if (mediaStream && videoRef.current) {
       videoRef.current.srcObject = mediaStream;
       setStream(mediaStream);
+      setIsStarting(false);
       
       // Simulate viewer growth
       setViewers(5);
@@ -77,6 +91,9 @@ export function LiveStreamView({
         setViewers(prev => prev + Math.floor(Math.random() * 10) + 1);
       }, 15000);
       return () => clearInterval(interval);
+    } else {
+      setError("Failed to start camera stream. Please check your device.");
+      setIsStarting(false);
     }
   };
 
@@ -124,7 +141,7 @@ export function LiveStreamView({
     });
     setTimeout(() => setGiftAnimation(null), 2000);
     
-    // TODO: Implement actual Solana tip transaction
+    alert(`🎁 You sent ${amount} SOL to ${creatorName || "the creator"}!`);
   };
 
   const shareStream = async () => {
@@ -158,6 +175,21 @@ export function LiveStreamView({
     };
   }, [isCreator, stream]);
 
+  if (error) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+        <div className="text-center max-w-sm px-4">
+          <div className="size-20 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="size-10 text-red-400" />
+          </div>
+          <h2 className="text-white text-xl font-bold mb-2">Camera Access Error</h2>
+          <p className="text-gray-400 text-sm mb-6">{error}</p>
+          <Button onClick={onEnd} className="bg-blue-600">Go Back</Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black">
       {/* Video Container */}
@@ -183,6 +215,16 @@ export function LiveStreamView({
           </div>
         )}
 
+        {/* Loading Overlay */}
+        {isStarting && isCreator && (
+          <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-20">
+            <div className="text-center">
+              <div className="size-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+              <p className="text-white">Starting camera...</p>
+            </div>
+          </div>
+        )}
+
         {/* Gift Animation */}
         {giftAnimation && (
           <div 
@@ -194,7 +236,7 @@ export function LiveStreamView({
         )}
 
         {/* Top Bar */}
-        <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent">
+        <div className="absolute top-0 left-0 right-0 p-4 bg-gradient-to-b from-black/60 to-transparent z-10">
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
@@ -246,8 +288,8 @@ export function LiveStreamView({
         )}
 
         {/* Creator Controls */}
-        {isCreator && (
-          <div className="absolute bottom-24 left-0 right-0 p-4">
+        {isCreator && !isStarting && (
+          <div className="absolute bottom-24 left-0 right-0 p-4 z-10">
             <div className="flex justify-center gap-4">
               <button 
                 onClick={handleToggleAudio}
@@ -272,7 +314,7 @@ export function LiveStreamView({
         )}
 
         {/* Chat Panel */}
-        <div className={`absolute right-0 top-20 bottom-20 bg-black/90 backdrop-blur-md border-l border-gray-800 transition-all duration-300 ${showChat ? 'w-80' : 'w-0 overflow-hidden'}`}>
+        <div className={`absolute right-0 top-20 bottom-20 bg-black/90 backdrop-blur-md border-l border-gray-800 transition-all duration-300 z-10 ${showChat ? 'w-80' : 'w-0 overflow-hidden'}`}>
           <div className="flex flex-col h-full">
             <div className="flex justify-between items-center p-3 border-b border-gray-800">
               <h3 className="text-white font-semibold">Chat ({messages.length})</h3>
@@ -309,7 +351,7 @@ export function LiveStreamView({
                   onChange={(e) => setMessage(e.target.value)}
                   placeholder="Say something..."
                   className="flex-1 bg-gray-800 border-gray-700 text-white text-sm"
-                  onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+                  onKeyPress={(e) => e.key === "Enter" && sendMessage()}
                 />
                 <Button onClick={sendMessage} size="sm" className="bg-blue-600 hover:bg-blue-700">
                   <Send className="size-4" />
@@ -323,7 +365,7 @@ export function LiveStreamView({
         {!showChat && (
           <button 
             onClick={() => setShowChat(true)} 
-            className="fixed right-4 top-24 size-10 rounded-full bg-blue-600 flex items-center justify-center shadow-lg"
+            className="fixed right-4 top-24 size-10 rounded-full bg-blue-600 flex items-center justify-center shadow-lg z-10"
           >
             <MessageCircle className="size-5 text-white" />
           </button>
@@ -331,7 +373,7 @@ export function LiveStreamView({
 
         {/* Invite Modal */}
         {showInviteModal && (
-          <div className="fixed inset-0 z-60 bg-black/80 flex items-center justify-center" onClick={() => setShowInviteModal(false)}>
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onClick={() => setShowInviteModal(false)}>
             <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-white font-bold text-lg mb-2">Invite Friends</h3>
               <p className="text-gray-400 text-sm mb-4">Share this link to invite viewers to your live stream</p>

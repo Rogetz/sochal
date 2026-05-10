@@ -132,7 +132,7 @@ function Landing() {
       </section>
 
       <footer className="border-t border-border/60 py-8 text-center text-xs text-muted-foreground">
-        Sochal · Solana · Anchor · 100ms · Helius
+       © 2026 Sochal. All rights reserved.
       </footer>
     </main>
   );

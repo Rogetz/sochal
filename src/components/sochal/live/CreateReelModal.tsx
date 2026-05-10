@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { TopicTag } from "@/types/sochal.types";
-import { Video, Mic, MicOff, VideoOff, FlipHorizontal, Camera, Check, X, Plus, Timer, StopCircle } from "lucide-react";
+import { Video, Mic, MicOff, VideoOff, FlipHorizontal, X, StopCircle, AlertCircle, Camera } from "lucide-react";
 
 interface CreateReelModalProps {
   isOpen: boolean;
@@ -21,7 +20,7 @@ const TOPICS = [
 ];
 
 export function CreateReelModal({ isOpen, onClose, onReelCreated }: CreateReelModalProps) {
-  const [step, setStep] = useState<"permissions" | "recording" | "preview" | "details">("permissions");
+  const [step, setStep] = useState<"permissions" | "recording" | "preview">("permissions");
   const [hasPermission, setHasPermission] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordTime, setRecordTime] = useState(0);
@@ -31,76 +30,100 @@ export function CreateReelModal({ isOpen, onClose, onReelCreated }: CreateReelMo
   const [description, setDescription] = useState("");
   const [selectedTopic, setSelectedTopic] = useState<TopicTag>(TopicTag.Singing);
   const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
   
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunksRef = useRef<Blob[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Request camera permissions
+  // Request camera permissions - DIRECT APPROACH
   const requestPermissions = async () => {
+    console.log("=== REQUESTING PERMISSIONS ===");
     setError(null);
+    setIsLoading(true);
+    
     try {
+      // Try to get camera with explicit constraints
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "user" }, 
+        video: true,
         audio: true 
       });
+      
+      console.log("Got stream successfully!");
+      console.log("Tracks:", stream.getTracks());
       
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         streamRef.current = stream;
         setHasPermission(true);
         setStep("recording");
+        console.log("Video element updated, step changed to recording");
       }
     } catch (err: any) {
       console.error("Camera error:", err);
+      console.error("Error name:", err.name);
+      console.error("Error message:", err.message);
+      
       if (err.name === "NotAllowedError") {
-        setError("Please allow camera and microphone access to create reels");
+        setError("Camera access denied. Please click the camera icon in your browser address bar and allow access, then refresh.");
       } else if (err.name === "NotFoundError") {
-        setError("No camera found on this device");
+        setError("No camera found on this device. Please connect a camera.");
       } else {
-        setError("Failed to access camera. Please check permissions.");
+        setError(`Camera error: ${err.message}. Please check your camera and try again.`);
       }
+    } finally {
+      setIsLoading(false);
     }
   };
 
   // Start recording
   const startRecording = () => {
-    if (!streamRef.current) return;
+    console.log("Start recording clicked");
+    if (!streamRef.current) {
+      setError("No camera stream. Please request permissions first.");
+      return;
+    }
     
     recordedChunksRef.current = [];
-    mediaRecorderRef.current = new MediaRecorder(streamRef.current, {
-      mimeType: 'video/webm'
-    });
     
-    mediaRecorderRef.current.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        recordedChunksRef.current.push(event.data);
-      }
-    };
-    
-    mediaRecorderRef.current.onstop = () => {
-      const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
-      const url = URL.createObjectURL(blob);
-      setPreviewUrl(url);
-      setStep("preview");
-      if (timerRef.current) clearInterval(timerRef.current);
-      setRecordTime(0);
-    };
-    
-    mediaRecorderRef.current.start();
-    setIsRecording(true);
-    
-    timerRef.current = setInterval(() => {
-      setRecordTime(prev => {
-        if (prev >= 60) {
-          stopRecording();
-          return 60;
+    try {
+      const mediaRecorder = new MediaRecorder(streamRef.current);
+      mediaRecorderRef.current = mediaRecorder;
+      
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
         }
-        return prev + 1;
-      });
-    }, 1000);
+      };
+      
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        setPreviewUrl(url);
+        setStep("preview");
+        if (timerRef.current) clearInterval(timerRef.current);
+        setRecordTime(0);
+      };
+      
+      mediaRecorder.start();
+      setIsRecording(true);
+      
+      timerRef.current = setInterval(() => {
+        setRecordTime(prev => {
+          if (prev >= 60) {
+            stopRecording();
+            return 60;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+      
+    } catch (err) {
+      console.error("Recording error:", err);
+      setError("Failed to start recording. Please try again.");
+    }
   };
 
   // Stop recording
@@ -108,29 +131,6 @@ export function CreateReelModal({ isOpen, onClose, onReelCreated }: CreateReelMo
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-    }
-  };
-
-  // Switch camera front/back
-  const switchCamera = async () => {
-    if (!streamRef.current) return;
-    
-    const videoTrack = streamRef.current.getVideoTracks()[0];
-    const currentFacingMode = videoTrack?.getSettings().facingMode;
-    const newFacingMode = currentFacingMode === "user" ? "environment" : "user";
-    
-    const newStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { exact: newFacingMode } },
-      audio: true,
-    });
-    
-    const newVideoTrack = newStream.getVideoTracks()[0];
-    videoTrack?.stop();
-    streamRef.current.removeTrack(videoTrack);
-    streamRef.current.addTrack(newVideoTrack);
-    
-    if (videoRef.current) {
-      videoRef.current.srcObject = streamRef.current;
     }
   };
 
@@ -154,39 +154,28 @@ export function CreateReelModal({ isOpen, onClose, onReelCreated }: CreateReelMo
     }
   };
 
-  // Capture thumbnail from video
-  const captureThumbnail = (): Promise<string> => {
-    return new Promise((resolve) => {
-      if (!videoRef.current) {
-        resolve("");
-        return;
-      }
-      const canvas = document.createElement('canvas');
-      canvas.width = videoRef.current.videoWidth;
-      canvas.height = videoRef.current.videoHeight;
-      const ctx = canvas.getContext('2d');
-      ctx?.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/jpeg'));
-    });
-  };
-
   // Submit reel
   const submitReel = async () => {
     if (!previewUrl) return;
     
-    const blob = await fetch(previewUrl).then(r => r.blob());
-    const thumbnail = await captureThumbnail();
-    const file = new File([blob], `reel_${Date.now()}.webm`, { type: 'video/webm' });
-    
-    onReelCreated({
-      videoFile: file,
-      description,
-      topic: selectedTopic,
-      thumbnail,
-    });
-    
-    cleanup();
-    onClose();
+    try {
+      const response = await fetch(previewUrl);
+      const blob = await response.blob();
+      const file = new File([blob], `reel_${Date.now()}.webm`, { type: 'video/webm' });
+      
+      onReelCreated({
+        videoFile: file,
+        description,
+        topic: selectedTopic,
+        thumbnail: "",
+      });
+      
+      cleanup();
+      onClose();
+    } catch (err) {
+      console.error("Submit error:", err);
+      setError("Failed to save reel. Please try again.");
+    }
   };
 
   const cleanup = () => {
@@ -201,6 +190,7 @@ export function CreateReelModal({ isOpen, onClose, onReelCreated }: CreateReelMo
     setDescription("");
     setRecordTime(0);
     setError(null);
+    setIsRecording(false);
   };
 
   const formatTime = (seconds: number) => {
@@ -220,15 +210,16 @@ export function CreateReelModal({ isOpen, onClose, onReelCreated }: CreateReelMo
       <DialogContent className="bg-black border-gray-800 max-w-lg w-full">
         <DialogHeader>
           <DialogTitle className="text-white flex items-center gap-2">
-            <Plus className="size-5 text-blue-400" />
+            <Camera className="size-5 text-blue-400" />
             Create Reel
           </DialogTitle>
         </DialogHeader>
 
         <div className="mt-4">
           {error && (
-            <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
-              {error}
+            <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm flex items-start gap-2">
+              <AlertCircle className="size-4 shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
           )}
 
@@ -241,15 +232,22 @@ export function CreateReelModal({ isOpen, onClose, onReelCreated }: CreateReelMo
               <p className="text-gray-400 text-sm mb-6">
                 Sochal needs access to your camera and microphone to record reels
               </p>
-              <Button onClick={requestPermissions} className="bg-blue-600">
-                Allow Access
+              <Button 
+                onClick={requestPermissions} 
+                disabled={isLoading}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                {isLoading ? "Requesting..." : "Allow Access"}
               </Button>
+              <p className="text-gray-500 text-xs mt-4">
+                If nothing happens, check your browser's camera permissions in the address bar
+              </p>
             </div>
           )}
 
           {step === "recording" && (
             <div>
-              <div className="relative aspect-[9/16] bg-black rounded-xl overflow-hidden mb-4">
+              <div className="relative aspect-[9/16] bg-black rounded-xl overflow-hidden mb-4 border border-gray-800">
                 <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                 
                 {/* Recording Indicator */}
@@ -274,13 +272,6 @@ export function CreateReelModal({ isOpen, onClose, onReelCreated }: CreateReelMo
                     {isVideoOff ? <VideoOff className="size-6 text-white" /> : <Video className="size-6 text-white" />}
                   </button>
                   
-                  <button 
-                    onClick={switchCamera} 
-                    className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center"
-                  >
-                    <FlipHorizontal className="size-6 text-white" />
-                  </button>
-                  
                   {!isRecording ? (
                     <button 
                       onClick={startRecording} 
@@ -298,7 +289,7 @@ export function CreateReelModal({ isOpen, onClose, onReelCreated }: CreateReelMo
                   )}
                 </div>
               </div>
-              <p className="text-center text-gray-400 text-sm">Tap to record (max 60 seconds)</p>
+              <p className="text-center text-gray-400 text-sm">Tap the red button to start recording (max 60 seconds)</p>
             </div>
           )}
 

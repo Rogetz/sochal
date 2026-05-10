@@ -10,9 +10,8 @@ import { ProfileSetupDialog } from "@/components/sochal/ProfileSetupDialog";
 import { MOCK_LIVE_STREAMS, getUserReels } from "@/lib/mock-data";
 import { 
   Home, Compass, Users, Radio, Upload, User, 
-  LogIn, Heart, MessageCircle, Share2, Search,
-  TrendingUp, Sparkles, Flame, X, Settings, Edit3, LogOut,
-  Video, Star, Calendar, MapPin, Link2, Check
+  LogIn, Heart, Search, Sparkles, Flame, X, Edit3, Settings,
+  Video, LogOut
 } from "lucide-react";
 
 export const Route = createFileRoute("/fan")({
@@ -29,18 +28,13 @@ function FanFeed() {
   const [activeLiveStream, setActiveLiveStream] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
-  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [myReels, setMyReels] = useState<any[]>([]);
   const [profileData, setProfileData] = useState({
     displayName: profile?.displayName || "",
     handle: profile?.handle || "",
     bio: profile?.bio || "",
-    website: "",
-    location: "",
-    birthday: "",
   });
 
-  // Load user's reels when on profile tab
   useEffect(() => {
     if (wallet && activeTab === "profile") {
       const reels = getUserReels(wallet.address);
@@ -48,13 +42,13 @@ function FanFeed() {
     }
   }, [wallet, activeTab]);
 
-  const [trendingTopics] = useState([
+  const trendingTopics = [
     { tag: "#Singing", posts: "128.5K", icon: "🎤" },
     { tag: "#Dancing", posts: "95.2K", icon: "💃" },
     { tag: "#Comedy", posts: "67.8K", icon: "😂" },
     { tag: "#Rap", posts: "45.3K", icon: "🎙️" },
     { tag: "#Gaming", posts: "34.1K", icon: "🎮" },
-  ]);
+  ];
 
   const handleJoinLive = (streamId: string) => {
     const liveStream = MOCK_LIVE_STREAMS.find(s => s.id === streamId);
@@ -200,7 +194,6 @@ function FanFeed() {
                 <div className="text-center">
                   <Users className="size-12 text-gray-600 mx-auto mb-3" />
                   <p className="text-gray-500">Follow creators to see their reels here</p>
-                  <Link to="/creator"><Button className="mt-4 bg-blue-600">Find Creators</Button></Link>
                 </div>
               </div>
             )}
@@ -211,7 +204,10 @@ function FanFeed() {
                   {MOCK_LIVE_STREAMS.map((stream) => (
                     <button key={stream.id} onClick={() => handleJoinLive(stream.id)} className="relative aspect-[9/16] rounded-xl overflow-hidden bg-gradient-to-b from-gray-800 to-gray-900">
                       <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition" />
-                      <div className="absolute top-2 left-2 flex items-center gap-1 bg-red-500 rounded-full px-2 py-0.5"><span className="size-1.5 bg-white rounded-full animate-pulse" /><span className="text-white text-xs">LIVE</span></div>
+                      <div className="absolute top-2 left-2 flex items-center gap-1 bg-red-500 rounded-full px-2 py-0.5">
+                        <span className="size-1.5 bg-white rounded-full animate-pulse" />
+                        <span className="text-white text-xs">LIVE</span>
+                      </div>
                       <div className="absolute bottom-2 left-2 right-2">
                         <p className="text-white text-sm font-semibold">{stream.creatorName}</p>
                         <p className="text-yellow-400 text-xs mt-1">🏆 {stream.tips} SOL</p>
@@ -231,40 +227,38 @@ function FanFeed() {
                 onEditProfile={() => setShowEditProfile(true)}
                 onSettings={() => setShowSettings(true)}
                 onCreateReel={() => setShowCreateReel(true)}
-                onRefresh={() => {
-                  if (wallet) {
-                    const reels = getUserReels(wallet.address);
-                    setMyReels(reels);
-                  }
-                }}
               />
             )}
           </div>
         </main>
 
-        {/* RIGHT SIDEBAR */}
+        {/* RIGHT SIDEBAR - Trending Topics & Suggested Creators (NO BUY COINS BANNER) */}
         <aside className="hidden lg:block lg:fixed lg:right-0 lg:top-0 lg:bottom-0 lg:w-80 lg:bg-black lg:border-l lg:border-gray-800 lg:p-6 lg:z-40 overflow-y-auto">
-          <div className="bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-2xl p-4 mb-6 border border-blue-500/30">
-            <div className="flex items-center justify-between">
-              <div><p className="text-white font-semibold">Get Coins</p><p className="text-gray-400 text-xs">Support creators</p></div>
-              <Button size="sm" className="bg-gradient-primary text-xs">Buy</Button>
-            </div>
-          </div>
-
+          {/* Trending Topics */}
           <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3"><Flame className="size-4 text-orange-500" /><h3 className="text-white font-semibold">Trending Topics</h3></div>
+            <div className="flex items-center gap-2 mb-3">
+              <Flame className="size-4 text-orange-500" />
+              <h3 className="text-white font-semibold">Trending Topics</h3>
+            </div>
             <div className="space-y-2">
               {trendingTopics.map((topic) => (
                 <div key={topic.tag} onClick={() => setActiveTab("challenges")} className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-900 cursor-pointer">
-                  <div className="flex items-center gap-2"><span className="text-xl">{topic.icon}</span><span className="text-white text-sm font-medium">{topic.tag}</span></div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">{topic.icon}</span>
+                    <span className="text-white text-sm font-medium">{topic.tag}</span>
+                  </div>
                   <span className="text-gray-500 text-xs">{topic.posts} posts</span>
                 </div>
               ))}
             </div>
           </div>
 
+          {/* Suggested Creators */}
           <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3"><Sparkles className="size-4 text-yellow-500" /><h3 className="text-white font-semibold">Suggested Creators</h3></div>
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="size-4 text-yellow-500" />
+              <h3 className="text-white font-semibold">Suggested Creators</h3>
+            </div>
             <div className="space-y-3">
               {[
                 { name: "Sarah Soul", handle: "@sarahsoul", avatar: "https://randomuser.me/api/portraits/women/1.jpg", followers: "132K" },
@@ -272,14 +266,20 @@ function FanFeed() {
               ].map((creator) => (
                 <div key={creator.handle} className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-900">
                   <img src={creator.avatar} alt="" className="size-10 rounded-full object-cover" />
-                  <div className="flex-1"><p className="text-white text-sm font-semibold">{creator.name}</p><p className="text-gray-500 text-xs">{creator.handle}</p></div>
+                  <div className="flex-1">
+                    <p className="text-white text-sm font-semibold">{creator.name}</p>
+                    <p className="text-gray-500 text-xs">{creator.handle}</p>
+                  </div>
                   <Button size="sm" variant="outline" className="border-blue-500 text-blue-400 text-xs h-8">Follow</Button>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="text-gray-600 text-xs pt-4 border-t border-gray-800"><p>© 2026 Sochal</p></div>
+          {/* Footer */}
+          <div className="text-gray-600 text-xs pt-4 border-t border-gray-800">
+            <p>© 2026 Sochal. All rights reserved.</p>
+          </div>
         </aside>
       </div>
 
@@ -291,14 +291,12 @@ function FanFeed() {
 }
 
 // Profile Screen Component
-function ProfileScreen({ myReels, profile, profileData, setProfileData, onEditProfile, onSettings, onCreateReel, onRefresh }: any) {
+function ProfileScreen({ myReels, profile, profileData, setProfileData, onEditProfile, onSettings, onCreateReel }: any) {
   const [activeReelTab, setActiveReelTab] = useState<"reels" | "likes">("reels");
-  
   const totalLikes = myReels.reduce((acc: number, reel: any) => acc + (reel.likes || 0), 0);
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
-      {/* Profile Header */}
       <div className="flex items-start gap-6 mb-6">
         <img src="https://randomuser.me/api/portraits/lego/1.jpg" alt="" className="size-24 rounded-full object-cover border-3 border-blue-500" />
         <div className="flex-1">
@@ -316,19 +314,16 @@ function ProfileScreen({ myReels, profile, profileData, setProfileData, onEditPr
         <button onClick={onSettings} className="p-2 rounded-full bg-gray-800 hover:bg-gray-700"><Settings className="size-5 text-gray-400" /></button>
       </div>
 
-      {/* Edit Profile Button */}
       <div className="flex gap-2 mb-6">
         <Button onClick={onEditProfile} variant="outline" className="flex-1 border-gray-700 text-white">Edit Profile</Button>
         <Button onClick={onCreateReel} className="flex-1 bg-gradient-primary">Create Reel</Button>
       </div>
 
-      {/* Reels/Likes Tabs */}
       <div className="flex border-b border-gray-800 mb-4">
         <button onClick={() => setActiveReelTab("reels")} className={`flex-1 py-2 text-center font-medium ${activeReelTab === "reels" ? "text-white border-b-2 border-blue-500" : "text-gray-500"}`}>Reels</button>
         <button onClick={() => setActiveReelTab("likes")} className={`flex-1 py-2 text-center font-medium ${activeReelTab === "likes" ? "text-white border-b-2 border-blue-500" : "text-gray-500"}`}>Liked</button>
       </div>
 
-      {/* Reels Grid */}
       {activeReelTab === "reels" && (
         myReels.length === 0 ? (
           <div className="text-center py-12 border border-dashed border-gray-700 rounded-2xl">
@@ -352,7 +347,6 @@ function ProfileScreen({ myReels, profile, profileData, setProfileData, onEditPr
         )
       )}
 
-      {/* Liked Reels */}
       {activeReelTab === "likes" && (
         <div className="text-center py-12">
           <Heart className="size-12 text-gray-600 mx-auto mb-3" />
