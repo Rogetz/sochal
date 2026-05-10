@@ -1,165 +1,192 @@
-# socha
+# Sochal
 
-Next.js starter with Tailwind CSS, `@solana/kit`, and an Anchor vault program example.
+Sochal is a fully on-chain, Solana-powered live streaming and challenge platform where creators monetize their talent through real-time fan tips and head-to-head competition. Built with Anchor (Rust) on Solana, it replaces traditional Web2 live platforms with a transparent, instant-settlement economy that uses SOL as the only medium of exchange.
 
-## Getting Started
+## How It Works
 
-```shell
-npx -y create-solana-dapp@latest -t solana-foundation/templates/kit/socha
+- Fans sign in with Phantom Wallet, pick a topic such as singing, dancing, or comedy, and join live streams by tipping a minimum of 0.01 SOL.
+- Creators go live with a preset tip menu. Fans can pay the listed SOL amount to request specific actions while the stream is active.
+- Once a live stream reaches its 1 SOL target, rewards are distributed instantly on-chain: the creator receives 85%, the top tipper earns 5%, and 10% goes to the platform treasury.
+- After a successful live session, creators can enter a topic-based tournament bracket.
+- Up to 32 creators are paired into 16 head-to-head challenges, with each round using a higher SOL target.
+- Challenge rewards are also settled on-chain: fans tip either competitor, the winner claims the larger share, the loser receives a cut, the top tipper is rewarded, and a portion rolls into the final prize pool.
+- The bracket advances through successive rounds until the final match, where the remaining creators compete for the accumulated prize pool.
+
+## Why Sochal
+
+- **Token-native economy** - SOL is the only asset used, keeping the experience simple, liquid, and fast.
+- **Trustless payouts** - all revenue splits and prize distributions are enforced directly by the program.
+- **Scalable design** - topic-based tournament groups allow parallel brackets without state contention.
+- **Mass-market UX** - built with Next.js, TypeScript, `@solana/kit`, and Phantom wallet integration for a familiar live-streaming experience.
+
+## Project Overview
+
+Full-stack Solana project with:
+
+- A Next.js app for the UI, wallet flow, and API routes
+- A Codama-generated program client under `app/generated/vault`
+- An Anchor Rust backend program in `anchor/programs/vault`
+
+## Tech Stack
+
+- Frontend: Next.js 16, React 19, TypeScript, Tailwind CSS
+- Solana JS: `@solana/kit` + wallet-standard
+- Real-time: Agora (`agora-rtc-react`, `agora-rtc-sdk-ng`)
+- Backend program: Anchor (`anchor-lang` 0.32.1, Rust)
+- Client generation: Codama
+
+## Quick Start
+
+### 1. Install dependencies
+
+```bash
+npm install
 ```
 
-```shell
-npm install
-npm run setup   # Builds the Anchor program and generates the TypeScript client
+### 2. Build backend + generate client
+
+```bash
+npm run setup
+```
+
+This runs:
+
+- `npm run anchor-build` -> `cd anchor && anchor build`
+- `npm run codama:js` -> regenerates `app/generated/vault`
+
+### 3. Start the app
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000), connect your wallet, and interact with the vault.
+Open http://localhost:3000.
 
-## What's Included
+## Scripts
 
-- **Wallet connection** via wallet-standard with auto-discovery and dropdown UI
-- **Cluster switching** — devnet, testnet, mainnet, and localnet from the header
-- **Wallet balance** display with airdrop button (devnet/testnet/localnet)
-- **SOL Vault program** — deposit and withdraw SOL from a personal PDA vault
-- **Toast notifications** with explorer links for every transaction
-- **Error handling** — human-readable messages for common Solana and program errors
-- **Codama-generated client** — type-safe program interactions using `@solana/kit`
-- **Tailwind CSS v4** with light/dark mode toggle
+Root scripts from `package.json`:
 
-## Stack
-
-| Layer          | Technology                       |
-| -------------- | -------------------------------- |
-| Frontend       | Next.js 16, React 19, TypeScript |
-| Styling        | Tailwind CSS v4                  |
-| Solana Client  | `@solana/kit`, wallet-standard   |
-| Program Client | Codama-generated, `@solana/kit`  |
-| Program        | Anchor (Rust)                    |
+- `npm run dev` - start Next.js dev server
+- `npm run build` - production build
+- `npm run start` - run built app
+- `npm run lint` - ESLint
+- `npm run format` - Prettier write
+- `npm run format:check` - Prettier check
+- `npm run anchor-build` - build Anchor program
+- `npm run anchor-test` - run Anchor tests (`--skip-deploy`)
+- `npm run codama:js` - regenerate TypeScript client from IDL
+- `npm run setup` - backend build + client generation
 
 ## Project Structure
 
+```text
+socha/
+├─ app/
+│  ├─ api/
+│  │  └─ agora/
+│  │     └─ token/                # Agora token route(s)
+│  ├─ components/
+│  │  ├─ conference/              # Conference UI pieces
+│  │  ├─ Conference.tsx
+│  │  ├─ ConferenceHome.tsx
+│  │  ├─ ControlBar.tsx
+│  │  ├─ HomeComponent.tsx
+│  │  ├─ JoinScreen.tsx
+│  │  ├─ VideoGrid.tsx
+│  │  ├─ VideoTile.tsx
+│  │  ├─ providers.tsx            # App providers (theme, cluster, wallet, Solana, Agora)
+│  │  ├─ cluster-context.tsx
+│  │  ├─ cluster-select.tsx
+│  │  ├─ wallet-button.tsx
+│  │  ├─ theme-toggle.tsx
+│  │  └─ grid-background.tsx
+│  ├─ conference/                 # Conference pages/routes
+│  ├─ generated/
+│  │  └─ vault/
+│  │     ├─ accounts/
+│  │     ├─ errors/
+│  │     ├─ instructions/
+│  │     ├─ pdas/
+│  │     ├─ programs/
+│  │     ├─ shared/
+│  │     ├─ types/
+│  │     └─ index.ts              # Codama-generated Vault client
+│  ├─ lib/
+│  │  ├─ hooks/                   # React hooks (balance, tx, conference, token, etc.)
+│  │  ├─ wallet/                  # wallet-standard integration
+│  │  ├─ agoraConfig.ts
+│  │  ├─ solana-client.ts
+│  │  ├─ solana-client-context.tsx
+│  │  ├─ explorer.ts
+│  │  ├─ lamports.ts
+│  │  ├─ error.ts
+│  │  └─ errors.ts
+│  ├─ types/
+│  ├─ globals.css
+│  ├─ icon.svg
+│  ├─ layout.tsx
+│  └─ page.tsx
+├─ anchor/
+│  ├─ Anchor.toml                 # Anchor config (cluster, wallet, program IDs)
+│  ├─ Cargo.toml                  # Rust workspace
+│  ├─ programs/
+│  │  └─ vault/
+│  │     ├─ Cargo.toml            # Program crate + features
+│  │     └─ src/
+│  │        └─ lib.rs             # Main on-chain Rust program
+│  ├─ target/                     # Build artifacts + IDL + deploy output
+│  └─ README.md                   # Backend-focused docs
+├─ codama.json                    # Codama generation config
+├─ package.json
+├─ next.config.ts
+├─ tsconfig.json
+└─ README.md
 ```
-├── app/
-│   ├── components/
-│   │   ├── cluster-context.tsx  # Cluster state (React context + localStorage)
-│   │   ├── cluster-select.tsx   # Cluster switcher dropdown
-│   │   ├── grid-background.tsx  # Solana-branded decorative grid
-│   │   ├── providers.tsx        # Wallet + theme providers
-│   │   ├── theme-toggle.tsx     # Light/dark mode toggle
-│   │   ├── vault-card.tsx       # Vault deposit/withdraw UI
-│   │   └── wallet-button.tsx    # Wallet connect/disconnect dropdown
-│   ├── generated/vault/        # Codama-generated program client
-│   ├── lib/
-│   │   ├── wallet/             # Wallet-standard connection layer
-│   │   │   ├── types.ts        # Wallet types
-│   │   │   ├── standard.ts     # Wallet discovery + session creation
-│   │   │   ├── signer.ts       # WalletSession → TransactionSigner
-│   │   │   └── context.tsx     # WalletProvider + useWallet() hook
-│   │   ├── hooks/
-│   │   │   ├── use-balance.ts  # SWR-based balance fetching
-│   │   │   └── use-send-transaction.ts  # Transaction send with loading state
-│   │   ├── cluster.ts          # Cluster endpoints + RPC factory
-│   │   ├── lamports.ts         # SOL/lamports conversion
-│   │   ├── send-transaction.ts # Transaction build + sign + send pipeline
-│   │   ├── errors.ts           # Transaction error parsing
-│   │   └── explorer.ts         # Explorer URL builder + address helpers
-│   └── page.tsx                # Main page
-├── anchor/                     # Anchor workspace
-│   └── programs/vault/         # Vault program (Rust)
-└── codama.json                 # Codama client generation config
-```
 
-## Local Development
+## Backend (Anchor) Workflow
 
-To test against a local validator instead of devnet:
-
-1. **Start a local validator**
-
-   ```bash
-   solana-test-validator
-   ```
-
-2. **Deploy the program locally**
-
-   ```bash
-   solana config set --url localhost
-   cd anchor
-   anchor build
-   anchor deploy
-   cd ..
-   npm run codama:js   # Regenerate client with local program ID
-   ```
-
-3. **Switch to localnet** in the app using the cluster selector in the header.
-
-## Deploy Your Own Vault
-
-The included vault program is already deployed to devnet. To deploy your own:
-
-### Prerequisites
-
-- [Rust](https://rustup.rs/)
-- [Solana CLI](https://solana.com/docs/intro/installation)
-- [Anchor](https://www.anchor-lang.com/docs/installation)
-
-### Steps
-
-1. **Configure Solana CLI for devnet**
-
-   ```bash
-   solana config set --url devnet
-   ```
-
-2. **Create a wallet (if needed) and fund it**
-
-   ```bash
-   solana-keygen new
-   solana airdrop 2
-   ```
-
-3. **Build and deploy the program**
-
-   ```bash
-   cd anchor
-   anchor build
-   anchor keys sync    # Updates program ID in source
-   anchor build        # Rebuild with new ID
-   anchor deploy
-   cd ..
-   ```
-
-4. **Regenerate the client and restart**
-   ```bash
-   npm run setup   # Rebuilds program and regenerates client
-   npm run dev
-   ```
-
-## Testing
-
-Tests use [LiteSVM](https://github.com/LiteSVM/litesvm), a fast lightweight Solana VM for testing.
+From repo root:
 
 ```bash
-npm run anchor-build   # Build the program first
-npm run anchor-test    # Run tests
+npm run anchor-build
+npm run anchor-test
 ```
 
-The tests are in `anchor/programs/vault/src/tests.rs` and automatically use the program ID from `declare_id!`.
-
-## Regenerating the Client
-
-If you modify the program, regenerate the TypeScript client:
+Or directly:
 
 ```bash
-npm run setup   # Or: npm run anchor-build && npm run codama:js
+cd anchor
+anchor build
+anchor test --skip-deploy
 ```
 
-This uses [Codama](https://github.com/codama-idl/codama) to generate a type-safe client from the Anchor IDL.
+For deploy and deeper backend notes, see `anchor/README.md`.
 
-## Learn More
+## Frontend + Program Client Workflow
 
-- [Solana Docs](https://solana.com/docs) — core concepts and guides
-- [Anchor Docs](https://www.anchor-lang.com/docs/introduction) — program development framework
-- [Deploying Programs](https://solana.com/docs/programs/deploying) — deployment guide
-- [@solana/kit](https://github.com/anza-xyz/kit) — Solana JavaScript SDK
-- [Codama](https://github.com/codama-idl/codama) — client generation from IDL
+When Rust program/IDL changes:
+
+1. `npm run anchor-build`
+2. `npm run codama:js`
+3. `npm run dev` (or `npm run build`)
+
+This keeps `app/generated/vault` in sync with the backend program.
+
+## Environment Notes
+
+- Main app env file: `.env.local`
+- Agora app ID expected as `NEXT_PUBLIC_AGORA_APP_ID`
+- Solana wallet and cluster defaults are managed via app contexts and local storage
+
+## Common Commands
+
+```bash
+# Full local prep
+npm run setup
+
+# Production build check
+npm run build
+
+# CI-like local check
+npm run ci
+```

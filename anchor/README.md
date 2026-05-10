@@ -1,76 +1,125 @@
-# Anchor Vault Program
+# Socha Anchor Backend
 
-This template includes a simple SOL vault program built with [Anchor](https://www.anchor-lang.com/).
+Modern Anchor backend for the `vault` Solana program.
 
-## Pre-deployed Program
+This folder contains the Rust smart contract, Anchor workspace config, and build artifacts used by the app.
 
-The vault program is deployed on **devnet** at:
+## Program Details
 
-```
-F4jZpgbtTb6RWNWq6v35fUeiAsRJMrDczVPv9U23yXjB
-```
+- Program name: `vault`
+- Program ID: `DtkhpMSR9ZXjZCiGurAVFSMANJ9cAEQAxWdgczvCdLSB`
+- Cluster (default): `devnet`
+- Anchor workspace root: `anchor/`
 
-You can interact with it immediately by connecting your wallet to devnet.
+## Prerequisites
 
-## Deploying Your Own Program
+Install these before running backend commands:
 
-To deploy your own version of the program:
+1. Rust (stable) + Cargo
+2. Solana CLI
+3. Anchor CLI (`avm` recommended)
 
-### 1. Generate a new program keypair
+Optional but recommended:
+
+- WSL2 on Windows (Ubuntu), then run commands inside WSL
+
+## Quick Start
+
+From the project root:
 
 ```bash
 cd anchor
-solana-keygen new -o target/deploy/vault-keypair.json
-```
-
-### 2. Get the new program ID
-
-```bash
-solana address -k target/deploy/vault-keypair.json
-```
-
-### 3. Update the program ID
-
-Update the program ID in these files:
-
-- `anchor/Anchor.toml` - Update `vault = "..."` under `[programs.devnet]`
-- `anchor/programs/vault/src/lib.rs` - Update `declare_id!("...")`
-
-### 4. Build and deploy
-
-```bash
-# Build the program
 anchor build
+```
 
-# Get devnet SOL for deployment (~2 SOL needed)
-solana airdrop 2 --url devnet
+If your wallet and RPC are configured, you can deploy to devnet:
 
-# Deploy to devnet
+```bash
 anchor deploy --provider.cluster devnet
 ```
 
-### 5. Regenerate the TypeScript client
+## Backend Rust Workflow
+
+### 1. Build the Program
+
+```bash
+cd anchor
+anchor build
+```
+
+This compiles `programs/vault/src/lib.rs` and updates artifacts in `target/`.
+
+### 2. Run Rust Tests
+
+Workspace Rust tests:
+
+```bash
+cd anchor
+cargo test
+```
+
+Anchor test command (if you add/maintain Anchor tests):
+
+```bash
+cd anchor
+anchor test --skip-deploy
+```
+
+### 3. Deploy to Devnet
+
+```bash
+cd anchor
+solana airdrop 2 --url devnet
+anchor deploy --provider.cluster devnet
+```
+
+### 4. Keep Program ID in Sync
+
+If you rotate keypairs or redeploy with a new ID, update both:
+
+- `anchor/Anchor.toml` under `[programs.devnet]`
+- `anchor/programs/vault/src/lib.rs` in `declare_id!("...")`
+
+### 5. Regenerate Frontend Client (Codama)
+
+After IDL or program changes:
 
 ```bash
 cd ..
 npm run codama:js
 ```
 
-This updates the generated client code in `app/generated/vault/` with your new program ID.
+## Folder Structure
 
-## Program Overview
+```text
+anchor/
+├─ Anchor.toml                     # Anchor workspace config (cluster, wallet, scripts)
+├─ Cargo.toml                      # Rust workspace manifest
+├─ Cargo.lock
+├─ README.md
+├─ dadcHse4Z1Ud9hrYiMqLjcQmKJTHjPz8rDEmYff8w5L.json  # local wallet keypair (provider)
+├─ programs/
+│  └─ vault/
+│     ├─ Cargo.toml                # Program crate config + Anchor features
+│     └─ src/
+│        └─ lib.rs                 # Main on-chain program logic
+└─ target/                         # Build output, IDL, deploy artifacts
+```
 
-The vault program allows users to:
-
-- **Deposit**: Send SOL to a personal vault PDA (Program Derived Address)
-- **Withdraw**: Retrieve all SOL from your vault
-
-Each user gets their own vault derived from their wallet address.
-
-## Testing
-
-Run the Anchor tests:
+## Useful Commands
 
 ```bash
-anchor test --skip-deploy
+# Check Solana CLI + cluster
+solana config get
+
+# Confirm wallet in use
+solana address
+
+# Build only the vault crate via Cargo
+cargo build --manifest-path programs/vault/Cargo.toml
 ```
+
+## Notes
+
+- Current program features include `init-if-needed` via `anchor-lang`.
+- Build warnings from dependency cfg checks can appear on newer toolchains; focus on Rust compile errors first.
