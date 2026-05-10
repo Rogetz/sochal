@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { 
   Mic, MicOff, Video, VideoOff, X, Send, Users, 
   FlipHorizontal, Share2, UserPlus, Copy, Check,
-  Gift, Heart, MessageCircle, LogIn, AlertCircle
+  MessageCircle, AlertCircle
 } from "lucide-react";
 
 interface LiveStreamViewProps {
@@ -29,7 +29,6 @@ export function LiveStreamView({
 }: LiveStreamViewProps) {
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
-  const [stream, setStream] = useState<MediaStream | null>(null);
   const [viewers, setViewers] = useState(0);
   const [tips, setTips] = useState(0);
   const [message, setMessage] = useState("");
@@ -38,20 +37,17 @@ export function LiveStreamView({
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isStarting, setIsStarting] = useState(true);
-  const [messages, setMessages] = useState<{ user: string; avatar?: string; text: string; isTip?: boolean; amount?: number }[]>([
+  const [messages, setMessages] = useState<{ user: string; text: string; isTip?: boolean }[]>([
     { user: "System", text: "Welcome to the live stream! 💫" }
   ]);
-  const [giftAnimation, setGiftAnimation] = useState<{ id: string; x: number; y: number } | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const inviteUrl = `${window.location.origin}/live/${streamId}`;
 
-  // Start camera/mic when component mounts (creator only)
   useEffect(() => {
     if (isCreator) {
       startCamera();
     } else {
-      // Viewer: Simulate joining viewers
       setViewers(Math.floor(Math.random() * 100) + 50);
       const interval = setInterval(() => {
         setViewers(prev => prev + Math.floor(Math.random() * 5));
@@ -64,7 +60,6 @@ export function LiveStreamView({
     setIsStarting(true);
     setError(null);
     
-    // Check device support first
     const support = await mediaService.checkDeviceSupport();
     if (!support.camera) {
       setError("No camera detected. Please connect a camera to go live.");
@@ -72,20 +67,11 @@ export function LiveStreamView({
       return;
     }
     
-    const hasPermission = await mediaService.getCameraPermissions();
-    if (!hasPermission) {
-      setError("Camera and microphone access required. Please allow access in your browser settings.");
-      setIsStarting(false);
-      return;
-    }
-    
-    const mediaStream = await mediaService.startStream(!isVideoOff, !isMuted);
-    if (mediaStream && videoRef.current) {
-      videoRef.current.srcObject = mediaStream;
-      setStream(mediaStream);
+    const stream = await mediaService.startStream(true, true);
+    if (stream && videoRef.current) {
+      videoRef.current.srcObject = stream;
       setIsStarting(false);
       
-      // Simulate viewer growth
       setViewers(5);
       const interval = setInterval(() => {
         setViewers(prev => prev + Math.floor(Math.random() * 10) + 1);
@@ -115,32 +101,14 @@ export function LiveStreamView({
 
   const sendMessage = () => {
     if (message.trim()) {
-      setMessages([...messages, { 
-        user: "You", 
-        text: message,
-        avatar: "https://randomuser.me/api/portraits/lego/1.jpg"
-      }]);
+      setMessages([...messages, { user: "You", text: message }]);
       setMessage("");
     }
   };
 
-  const sendTip = async (amount: number) => {
+  const sendTip = (amount: number) => {
     setTips(prev => prev + amount);
-    setMessages([...messages, { 
-      user: "You", 
-      text: `🎁 Sent ${amount} SOL!`, 
-      isTip: true,
-      amount
-    }]);
-    
-    // Show gift animation
-    setGiftAnimation({
-      id: Date.now().toString(),
-      x: Math.random() * 200 + 50,
-      y: Math.random() * 300 + 100,
-    });
-    setTimeout(() => setGiftAnimation(null), 2000);
-    
+    setMessages([...messages, { user: "You", text: `🎁 Sent ${amount} SOL!`, isTip: true }]);
     alert(`🎁 You sent ${amount} SOL to ${creatorName || "the creator"}!`);
   };
 
@@ -162,18 +130,13 @@ export function LiveStreamView({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const inviteFriend = () => {
-    setShowInviteModal(true);
-  };
-
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (isCreator && stream) {
+      if (isCreator) {
         mediaService.stopStream();
       }
     };
-  }, [isCreator, stream]);
+  }, [isCreator]);
 
   if (error) {
     return (
@@ -192,16 +155,9 @@ export function LiveStreamView({
 
   return (
     <div className="fixed inset-0 z-50 bg-black">
-      {/* Video Container */}
       <div className="relative h-full w-full bg-black">
         {isCreator ? (
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted={isMuted}
-            className="w-full h-full object-cover"
-          />
+          <video ref={videoRef} autoPlay playsInline muted={isMuted} className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <div className="text-center">
@@ -215,23 +171,12 @@ export function LiveStreamView({
           </div>
         )}
 
-        {/* Loading Overlay */}
         {isStarting && isCreator && (
           <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-20">
             <div className="text-center">
               <div className="size-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
               <p className="text-white">Starting camera...</p>
             </div>
-          </div>
-        )}
-
-        {/* Gift Animation */}
-        {giftAnimation && (
-          <div 
-            className="fixed text-4xl animate-bounce pointer-events-none"
-            style={{ left: giftAnimation.x, top: giftAnimation.y, position: 'fixed' }}
-          >
-            🎁
           </div>
         )}
 
@@ -258,7 +203,7 @@ export function LiveStreamView({
               </button>
               {isCreator && (
                 <>
-                  <button onClick={inviteFriend} className="size-8 rounded-full bg-black/50 flex items-center justify-center">
+                  <button onClick={() => setShowInviteModal(true)} className="size-8 rounded-full bg-black/50 flex items-center justify-center">
                     <UserPlus className="size-4 text-white" />
                   </button>
                   <button onClick={onEnd} className="px-3 py-1 rounded-full bg-red-500 text-white text-sm font-medium">
@@ -273,40 +218,17 @@ export function LiveStreamView({
           </div>
         </div>
 
-        {/* Creator Info (for viewers) */}
-        {!isCreator && creatorAvatar && (
-          <div className="absolute bottom-24 left-4 z-10 flex items-center gap-2 bg-black/50 rounded-full pl-1 pr-3 py-1">
-            <img src={creatorAvatar} alt="" className="size-8 rounded-full object-cover" />
-            <div>
-              <p className="text-white text-sm font-semibold">{creatorName}</p>
-              <p className="text-gray-300 text-xs">{creatorHandle}</p>
-            </div>
-            <button className="ml-2 px-3 py-1 rounded-full bg-blue-600 text-white text-xs">
-              Follow
-            </button>
-          </div>
-        )}
-
         {/* Creator Controls */}
         {isCreator && !isStarting && (
           <div className="absolute bottom-24 left-0 right-0 p-4 z-10">
             <div className="flex justify-center gap-4">
-              <button 
-                onClick={handleToggleAudio}
-                className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center"
-              >
+              <button onClick={handleToggleAudio} className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center">
                 {isMuted ? <MicOff className="size-6 text-white" /> : <Mic className="size-6 text-white" />}
               </button>
-              <button 
-                onClick={handleToggleVideo}
-                className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center"
-              >
+              <button onClick={handleToggleVideo} className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center">
                 {isVideoOff ? <VideoOff className="size-6 text-white" /> : <Video className="size-6 text-white" />}
               </button>
-              <button 
-                onClick={handleSwitchCamera}
-                className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center"
-              >
+              <button onClick={handleSwitchCamera} className="size-12 rounded-full bg-black/60 backdrop-blur flex items-center justify-center">
                 <FlipHorizontal className="size-6 text-white" />
               </button>
             </div>
@@ -323,37 +245,22 @@ export function LiveStreamView({
             <div className="flex-1 overflow-y-auto p-3 space-y-2">
               {messages.map((msg, i) => (
                 <div key={i} className={`text-sm ${msg.isTip ? 'bg-yellow-500/20 rounded-lg p-2' : ''}`}>
-                  <div className="flex items-start gap-2">
-                    {msg.avatar && <img src={msg.avatar} alt="" className="size-6 rounded-full" />}
-                    <div>
-                      <span className="text-blue-400 font-semibold">{msg.user}: </span>
-                      <span className="text-white">{msg.text}</span>
-                    </div>
-                  </div>
+                  <span className="text-blue-400 font-semibold">{msg.user}: </span>
+                  <span className="text-white">{msg.text}</span>
                 </div>
               ))}
             </div>
             <div className="p-3 border-t border-gray-800">
               <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
                 {[0.1, 0.5, 1, 5, 10].map(amount => (
-                  <button
-                    key={amount}
-                    onClick={() => sendTip(amount)}
-                    className="px-3 py-1.5 rounded-full bg-yellow-500/20 text-yellow-400 text-xs font-medium whitespace-nowrap"
-                  >
+                  <button key={amount} onClick={() => sendTip(amount)} className="px-3 py-1.5 rounded-full bg-yellow-500/20 text-yellow-400 text-xs font-medium">
                     🎁 {amount} SOL
                   </button>
                 ))}
               </div>
               <div className="flex gap-2">
-                <Input
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  placeholder="Say something..."
-                  className="flex-1 bg-gray-800 border-gray-700 text-white text-sm"
-                  onKeyPress={(e) => e.key === "Enter" && sendMessage()}
-                />
-                <Button onClick={sendMessage} size="sm" className="bg-blue-600 hover:bg-blue-700">
+                <Input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Say something..." className="flex-1 bg-gray-800 border-gray-700 text-white text-sm" onKeyPress={(e) => e.key === "Enter" && sendMessage()} />
+                <Button onClick={sendMessage} size="sm" className="bg-blue-600">
                   <Send className="size-4" />
                 </Button>
               </div>
@@ -361,33 +268,24 @@ export function LiveStreamView({
           </div>
         </div>
 
-        {/* Toggle Chat Button */}
         {!showChat && (
-          <button 
-            onClick={() => setShowChat(true)} 
-            className="fixed right-4 top-24 size-10 rounded-full bg-blue-600 flex items-center justify-center shadow-lg z-10"
-          >
+          <button onClick={() => setShowChat(true)} className="fixed right-4 top-24 size-10 rounded-full bg-blue-600 flex items-center justify-center shadow-lg z-10">
             <MessageCircle className="size-5 text-white" />
           </button>
         )}
 
-        {/* Invite Modal */}
         {showInviteModal && (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onClick={() => setShowInviteModal(false)}>
             <div className="bg-gray-900 rounded-2xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-white font-bold text-lg mb-2">Invite Friends</h3>
-              <p className="text-gray-400 text-sm mb-4">Share this link to invite viewers to your live stream</p>
+              <p className="text-gray-400 text-sm mb-4">Share this link to invite viewers</p>
               <div className="flex gap-2 mb-6">
                 <Input value={inviteUrl} readOnly className="bg-gray-800 border-gray-700 text-white text-sm flex-1" />
                 <Button onClick={copyInviteLink} className="bg-blue-600">
                   {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
                 </Button>
               </div>
-              <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowInviteModal(false)} className="flex-1">
-                  Close
-                </Button>
-              </div>
+              <Button variant="outline" onClick={() => setShowInviteModal(false)} className="w-full">Close</Button>
             </div>
           </div>
         )}

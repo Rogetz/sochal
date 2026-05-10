@@ -113,10 +113,38 @@ export const MOCK_LIVE_STREAMS: MockLiveStream[] = [
   },
 ];
 
-// Storage for user-created reels
-let userReels: MockReel[] = [];
+// Storage key for localStorage
+const STORAGE_KEY = 'sochal_user_reels';
 
-export function addUserReel(reel: Omit<MockReel, "id" | "likes" | "comments" | "shares" | "createdAt">) {
+// Load user reels from localStorage
+function loadUserReels(): MockReel[] {
+  if (typeof window === 'undefined') return [];
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored);
+      // Convert date strings back to Date objects
+      return parsed.map((reel: any) => ({
+        ...reel,
+        createdAt: new Date(reel.createdAt),
+      }));
+    } catch (e) {
+      console.error('Failed to parse user reels:', e);
+    }
+  }
+  return [];
+}
+
+// Save user reels to localStorage
+function saveUserReels(reels: MockReel[]): void {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(reels));
+}
+
+// Initialize userReels from localStorage
+let userReels: MockReel[] = loadUserReels();
+
+export function addUserReel(reel: Omit<MockReel, "id" | "likes" | "comments" | "shares" | "createdAt">): MockReel {
   const newReel: MockReel = {
     ...reel,
     id: `user_reel_${Date.now()}`,
@@ -126,6 +154,7 @@ export function addUserReel(reel: Omit<MockReel, "id" | "likes" | "comments" | "
     createdAt: new Date(),
   };
   userReels.unshift(newReel);
+  saveUserReels(userReels);
   return newReel;
 }
 
@@ -134,5 +163,17 @@ export function getAllReels(): MockReel[] {
 }
 
 export function getUserReels(userId: string): MockReel[] {
-  return [...userReels.filter(r => r.creatorId === userId), ...MOCK_REELS.filter(r => r.creatorId === userId)];
+  const allUserReels = [...userReels.filter(r => r.creatorId === userId), ...MOCK_REELS.filter(r => r.creatorId === userId)];
+  return allUserReels;
+}
+
+// Helper function to clear all user reels (for testing)
+export function clearUserReels(): void {
+  userReels = [];
+  saveUserReels(userReels);
+}
+
+// Helper function to get user reel count
+export function getUserReelCount(userId: string): number {
+  return getUserReels(userId).length;
 }
