@@ -1,9 +1,31 @@
-# Socha Monorepo
+# Sochal
+
+Sochal is a fully on-chain, Solana-powered live streaming and challenge platform where creators monetize their talent through real-time fan tips and head-to-head competition. Built with Anchor (Rust) on Solana, it replaces traditional Web2 live platforms with a transparent, instant-settlement economy that uses SOL as the only medium of exchange.
+
+## How It Works
+
+- Fans sign in with Phantom Wallet, pick a topic such as singing, dancing, or comedy, and join live streams by tipping a minimum of 0.01 SOL.
+- Creators go live with a preset tip menu. Fans can pay the listed SOL amount to request specific actions while the stream is active.
+- Once a live stream reaches its 1 SOL target, rewards are distributed instantly on-chain: the creator receives 85%, the top tipper earns 5%, and 10% goes to the platform treasury.
+- After a successful live session, creators can enter a topic-based tournament bracket.
+- Up to 32 creators are paired into 16 head-to-head challenges, with each round using a higher SOL target.
+- Challenge rewards are also settled on-chain: fans tip either competitor, the winner claims the larger share, the loser receives a cut, the top tipper is rewarded, and a portion rolls into the final prize pool.
+- The bracket advances through successive rounds until the final match, where the remaining creators compete for the accumulated prize pool.
+
+## Why Sochal
+
+- **Token-native economy** - SOL is the only asset used, keeping the experience simple, liquid, and fast.
+- **Trustless payouts** - all revenue splits and prize distributions are enforced directly by the program.
+- **Scalable design** - topic-based tournament groups allow parallel brackets without state contention.
+- **Mass-market UX** - built with Next.js, TypeScript, `@solana/kit`, and Phantom wallet integration for a familiar live-streaming experience.
+
+## Project Overview
 
 Full-stack Solana project with:
 
-- A Next.js app (UI + wallet + API routes + generated program client)
-- An Anchor Rust backend program (`vault`)
+- A Next.js app for the UI, wallet flow, and API routes
+- A Codama-generated program client under `app/generated/vault`
+- An Anchor Rust backend program in `anchor/programs/vault`
 
 ## Tech Stack
 
