@@ -1,14 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useRef } from "react";
-import AgoraRTC, { 
-  IAgoraRTCClient, 
-  ILocalAudioTrack, 
-  ILocalVideoTrack,
-  IRemoteVideoTrack,
-  IRemoteAudioTrack,
-  UID
-} from "agora-rtc-sdk-ng";
+import type { IAgoraRTCClient, ILocalAudioTrack, ILocalVideoTrack, IRemoteVideoTrack, IRemoteAudioTrack, UID } from "agora-rtc-sdk-ng";
 
 interface AgoraContextType {
   client: IAgoraRTCClient | null;
@@ -27,6 +20,8 @@ interface AgoraContextType {
 
 const AgoraContext = createContext<AgoraContextType | undefined>(undefined);
 
+let AgoraRTC: any = null;
+
 export function AgoraProvider({ children }: { children: React.ReactNode }) {
   const [client, setClient] = useState<IAgoraRTCClient | null>(null);
   const [localAudioTrack, setLocalAudioTrack] = useState<ILocalAudioTrack | null>(null);
@@ -39,90 +34,95 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
   const isJoiningRef = useRef(false);
   const isLeavingRef = useRef(false);
 
-  // Initialize client once
+  // Dynamically import AgoraRTC on client side only
   useEffect(() => {
-    const rtcClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
-    setClient(rtcClient);
+    const initAgora = async () => {
+      const module = await import("agora-rtc-sdk-ng");
+      AgoraRTC = module.default;
+      
+      const rtcClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
+      setClient(rtcClient);
 
-    rtcClient.on("user-published", async (user, mediaType) => {
-      await rtcClient.subscribe(user, mediaType);
-      
-      const newRemoteUsers = new Map(remoteUsers);
-      
-      if (mediaType === "video" && user.videoTrack) {
-        newRemoteUsers.set(user.uid, {
-          ...newRemoteUsers.get(user.uid),
-          videoTrack: user.videoTrack,
-        });
-        // Play remote video
-        const playerId = `remote-video-${user.uid}`;
-        setTimeout(() => {
-          const playerElement = document.getElementById(playerId);
-          if (playerElement) {
-            user.videoTrack?.play(playerId);
-          }
-        }, 100);
-      }
-      if (mediaType === "audio" && user.audioTrack) {
-        newRemoteUsers.set(user.uid, {
-          ...newRemoteUsers.get(user.uid),
-          audioTrack: user.audioTrack,
-        });
-        user.audioTrack.play();
-      }
-      
-      setRemoteUsers(new Map(newRemoteUsers));
-    });
-
-    rtcClient.on("user-unpublished", (user, mediaType) => {
-      const newRemoteUsers = new Map(remoteUsers);
-      const userData = newRemoteUsers.get(user.uid);
-      
-      if (userData) {
-        if (mediaType === "video") {
-          userData.videoTrack?.stop();
-          delete userData.videoTrack;
+      rtcClient.on("user-published", async (user: any, mediaType: string) => {
+        await rtcClient.subscribe(user, mediaType);
+        
+        const newRemoteUsers = new Map(remoteUsers);
+        
+        if (mediaType === "video" && user.videoTrack) {
+          newRemoteUsers.set(user.uid, {
+            ...newRemoteUsers.get(user.uid),
+            videoTrack: user.videoTrack,
+          });
+          setTimeout(() => {
+            const playerId = `remote-video-${user.uid}`;
+            const playerElement = document.getElementById(playerId);
+            if (playerElement) {
+              user.videoTrack?.play(playerId);
+            }
+          }, 100);
         }
-        if (mediaType === "audio") {
-          userData.audioTrack?.stop();
-          delete userData.audioTrack;
+        if (mediaType === "audio" && user.audioTrack) {
+          newRemoteUsers.set(user.uid, {
+            ...newRemoteUsers.get(user.uid),
+            audioTrack: user.audioTrack,
+          });
+          user.audioTrack.play();
         }
         
-        if (!userData.videoTrack && !userData.audioTrack) {
-          newRemoteUsers.delete(user.uid);
-        } else {
-          newRemoteUsers.set(user.uid, userData);
-        }
-      }
-      
-      setRemoteUsers(new Map(newRemoteUsers));
-    });
+        setRemoteUsers(new Map(newRemoteUsers));
+      });
 
-    rtcClient.on("user-left", (user) => {
-      const newRemoteUsers = new Map(remoteUsers);
-      const userData = newRemoteUsers.get(user.uid);
-      if (userData) {
-        userData.videoTrack?.stop();
-        userData.audioTrack?.stop();
-      }
-      newRemoteUsers.delete(user.uid);
-      setRemoteUsers(new Map(newRemoteUsers));
-    });
+      rtcClient.on("user-unpublished", (user: any, mediaType: string) => {
+        const newRemoteUsers = new Map(remoteUsers);
+        const userData = newRemoteUsers.get(user.uid);
+        
+        if (userData) {
+          if (mediaType === "video") {
+            userData.videoTrack?.stop();
+            delete userData.videoTrack;
+          }
+          if (mediaType === "audio") {
+            userData.audioTrack?.stop();
+            delete userData.audioTrack;
+          }
+          
+          if (!userData.videoTrack && !userData.audioTrack) {
+            newRemoteUsers.delete(user.uid);
+          } else {
+            newRemoteUsers.set(user.uid, userData);
+          }
+        }
+        
+        setRemoteUsers(new Map(newRemoteUsers));
+      });
+
+      rtcClient.on("user-left", (user: any) => {
+        const newRemoteUsers = new Map(remoteUsers);
+        const userData = newRemoteUsers.get(user.uid);
+        if (userData) {
+          userData.videoTrack?.stop();
+          userData.audioTrack?.stop();
+        }
+        newRemoteUsers.delete(user.uid);
+        setRemoteUsers(new Map(newRemoteUsers));
+      });
+    };
+    
+    initAgora();
 
     return () => {
-      if (rtcClient) {
-        rtcClient.removeAllListeners();
+      if (client) {
+        client.removeAllListeners();
       }
     };
   }, []);
 
   const joinChannel = async (channelName: string, role: "host" | "audience", userName: string) => {
-    if (!client) {
+    if (!client || !AgoraRTC) {
       setError("Client not initialized");
       return;
     }
 
-    // Prevent multiple join attempts
     if (isJoined || isJoiningRef.current) {
       console.log("Already joined or joining");
       return;
@@ -132,15 +132,10 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
     setError(null);
 
     try {
-      // Get token from API
       const response = await fetch("/api/agora/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          channelName,
-          uid: 0,
-          role,
-        }),
+        body: JSON.stringify({ channelName, uid: 0, role }),
       });
       
       const data = await response.json();
@@ -150,29 +145,15 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
         throw new Error("Failed to get token");
       }
 
-      // Set client role
       await client.setClientRole(role === "host" ? "host" : "audience");
-      
-      // Join channel
-      await client.join(
-        process.env.NEXT_PUBLIC_AGORA_APP_ID!,
-        channelName,
-        token,
-        0
-      );
+      await client.join(process.env.NEXT_PUBLIC_AGORA_APP_ID!, channelName, token, 0);
 
       if (role === "host") {
-        // Create local tracks
         const [audioTrack, videoTrack] = await AgoraRTC.createMicrophoneAndCameraTracks();
         setLocalAudioTrack(audioTrack);
         setLocalVideoTrack(videoTrack);
-        
-        // Publish tracks
         await client.publish([audioTrack, videoTrack]);
-        
-        // Play local video
         videoTrack.play("local-video", { fit: "cover" });
-        
         setIsAudioEnabled(true);
         setIsVideoEnabled(true);
       }

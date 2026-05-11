@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Header } from "@/components/sochal/Header";
 import { Providers } from "./providers";
-import { AgoraProvider } from "@/components/sochal/live/AgoraProvider";
 
 export const metadata: Metadata = {
   title: "Sochal — Live Battles on Solana",
@@ -23,12 +22,10 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-black antialiased">
-        <AgoraProvider>
-          <Providers>
-            <Header />
-            <main className="pt-16">{children}</main>
-          </Providers>
-        </AgoraProvider>
+        <Providers>
+          <Header />
+          <main className="pt-16">{children}</main>
+        </Providers>
       </body>
     </html>
   );

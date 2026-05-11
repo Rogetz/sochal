@@ -1,1 +1,28 @@
-{}
+{
+  "app\\live\\channelName\\page.tsx -> @/components/sochal/live/AgoraLiveStream": {
+    "id": 2655,
+    "files": [
+      "static/chunks/655.0a58e207f0752452.js"
+    ]
+  },
+  "components\\sochal\\live\\AgoraLiveStream.tsx -> ./AgoraLiveStreamInner": {
+    "id": 955,
+    "files": [
+      "static/chunks/485-a5e408ee31ce3abe.js",
+      "static/chunks/955.6fab089491b776eb.js"
+    ]
+  },
+  "components\\sochal\\live\\AgoraLiveStream.tsx -> ./AgoraProvider": {
+    "id": 3841,
+    "files": [
+      "static/chunks/841.175b97dd71ea74f1.js"
+    ]
+  },
+  "components\\sochal\\live\\AgoraProvider.tsx -> agora-rtc-sdk-ng": {
+    "id": 8643,
+    "files": [
+      "static/chunks/d185def3.054dc317385f3678.js",
+      "static/chunks/78.0058956d69abef7a.js"
+    ]
+  }
+}
