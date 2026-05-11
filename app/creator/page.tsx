@@ -16,8 +16,14 @@ import { ProfileSetupDialog } from "@/components/sochal/ProfileSetupDialog";
 
 import { GoLiveModal } from "@/components/sochal/live/GoLiveModal";
 import { CreateReelModal } from "@/components/sochal/live/CreateReelModal";
-import { AgoraLiveStream } from "@/components/sochal/live/AgoraLiveStream";
+import dynamic from "next/dynamic";
 
+const SimpleAgoraStream = dynamic(
+  () => import("@/components/sochal/live/SimpleAgoraStream"),
+  {
+    ssr: false,
+  }
+);
 import { addUserReel, getUserReels } from "@/lib/mock-data";
 
 import {
@@ -137,7 +143,6 @@ export default function CreatorStudio() {
 
   const handleStartAgoraStream = () => {
     if (!selectedChallenge) return;
-    // Generate unique channel name with timestamp and random string
     const channel = `battle_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     setCurrentChannel(channel);
     setShowAgoraStream(true);
@@ -200,7 +205,7 @@ export default function CreatorStudio() {
 
   if (showAgoraStream) {
     return (
-      <AgoraLiveStream
+      <SimpleAgoraStream
         channelName={currentChannel}
         role="host"
         userName={profile.displayName}

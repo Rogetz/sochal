@@ -1,10 +1,5 @@
 {
-  "/_not-found/page": "app/_not-found/page.js",
-  "/api/agora/token/route": "app/api/agora/token/route.js",
-  "/explore/page": "app/explore/page.js",
   "/creator/page": "app/creator/page.js",
-  "/live/channelName/page": "app/live/channelName/page.js",
-  "/fan/page": "app/fan/page.js",
-  "/live/streamId/page": "app/live/streamId/page.js",
-  "/page": "app/page.js"
+  "/page": "app/page.js",
+  "/api/agora/token/route": "app/api/agora/token/route.js"
 }

@@ -1,28 +1,14 @@
 {
-  "app\\live\\channelName\\page.tsx -> @/components/sochal/live/AgoraLiveStream": {
-    "id": 2655,
+  "app\\creator\\page.tsx -> @/components/sochal/live/SimpleAgoraStream": {
+    "id": "app\\creator\\page.tsx -> @/components/sochal/live/SimpleAgoraStream",
     "files": [
-      "static/chunks/655.0a58e207f0752452.js"
+      "static/chunks/_app-pages-browser_components_sochal_live_SimpleAgoraStream_tsx.js"
     ]
   },
-  "components\\sochal\\live\\AgoraLiveStream.tsx -> ./AgoraLiveStreamInner": {
-    "id": 955,
+  "components\\sochal\\live\\SimpleAgoraStream.tsx -> agora-rtc-sdk-ng": {
+    "id": "components\\sochal\\live\\SimpleAgoraStream.tsx -> agora-rtc-sdk-ng",
     "files": [
-      "static/chunks/485-a5e408ee31ce3abe.js",
-      "static/chunks/955.6fab089491b776eb.js"
-    ]
-  },
-  "components\\sochal\\live\\AgoraLiveStream.tsx -> ./AgoraProvider": {
-    "id": 3841,
-    "files": [
-      "static/chunks/841.175b97dd71ea74f1.js"
-    ]
-  },
-  "components\\sochal\\live\\AgoraProvider.tsx -> agora-rtc-sdk-ng": {
-    "id": 8643,
-    "files": [
-      "static/chunks/d185def3.054dc317385f3678.js",
-      "static/chunks/78.0058956d69abef7a.js"
+      "static/chunks/_app-pages-browser_node_modules_agora-rtc-sdk-ng_AgoraRTC_N-production_js.js"
     ]
   }
 }
