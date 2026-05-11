@@ -49,7 +49,10 @@ export interface LiveArgs {
   totalTips: number | bigint;
   topTipper: Address;
   topTipperAmount: number | bigint;
+
+  // FIXED
   targetReachedAt: OptionOrNullable<number | bigint>;
+
   closed: boolean;
   menuItems: Array<MenuItemArgs>;
   menuCount: number;
@@ -69,18 +72,29 @@ export interface ChallengeArgs {
   tournamentGroup: Address;
   round: number;
   pairIndex: number;
+
   creatorA: Address;
   creatorB: Address;
+
   status: ChallengeStatus;
+
   targetMin: number | bigint;
+
   aTotal: number | bigint;
   bTotal: number | bigint;
+
   topTipper: Address;
   topTipperAmount: number | bigint;
-  targetReachedAt: OptionOrNullable;
+
+  // FIXED HERE
+  targetReachedAt: OptionOrNullable<number | bigint>;
+
+  // THIS ONE WAS ALREADY CORRECT
   winner: OptionOrNullable<Address>;
+
   fanTips: Array<ChallengeTipArgs>;
   fanCount: number;
+
   bump: number;
 }
 
@@ -88,22 +102,30 @@ export interface ChallengeArgs {
 export interface MockChallenge {
   id: string;
   topic: TopicTag;
+
   title: string;
   description: string;
+
   creatorCount: number;
   totalPrizePool: number;
+
   thumbnailUrl: string;
+
   activeLives: Array<MockLive>;
+
   createdAt: Date;
   endsAt: Date;
 }
 
 export interface MockLive {
   liveId: string;
+
   creatorName: string;
   creatorHandle: string;
   creatorAvatar: string;
+
   currentTips: number;
   viewerCount: number;
+
   isActive: boolean;
 }
