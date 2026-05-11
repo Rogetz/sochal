@@ -137,9 +137,15 @@ export default function CreatorStudio() {
 
   const handleStartAgoraStream = () => {
     if (!selectedChallenge) return;
-    const channel = `battle_${Date.now()}`;
+    // Generate unique channel name with timestamp and random string
+    const channel = `battle_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
     setCurrentChannel(channel);
     setShowAgoraStream(true);
+  };
+
+  const handleEndAgoraStream = () => {
+    setShowAgoraStream(false);
+    setCurrentChannel("");
   };
 
   if (!wallet) {
@@ -198,7 +204,7 @@ export default function CreatorStudio() {
         channelName={currentChannel}
         role="host"
         userName={profile.displayName}
-        onEnd={() => setShowAgoraStream(false)}
+        onEnd={handleEndAgoraStream}
       />
     );
   }

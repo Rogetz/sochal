@@ -36,13 +36,14 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isJoined, setIsJoined] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [currentRole, setCurrentRole] = useState<"host" | "audience">("audience");
+  const isJoiningRef = useRef(false);
+  const isLeavingRef = useRef(false);
 
+  // Initialize client once
   useEffect(() => {
     const rtcClient = AgoraRTC.createClient({ mode: "live", codec: "vp8" });
     setClient(rtcClient);
 
-    // Handle remote user publishing
     rtcClient.on("user-published", async (user, mediaType) => {
       await rtcClient.subscribe(user, mediaType);
       
@@ -53,6 +54,14 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
           ...newRemoteUsers.get(user.uid),
           videoTrack: user.videoTrack,
         });
+        // Play remote video
+        const playerId = `remote-video-${user.uid}`;
+        setTimeout(() => {
+          const playerElement = document.getElementById(playerId);
+          if (playerElement) {
+            user.videoTrack?.play(playerId);
+          }
+        }, 100);
       }
       if (mediaType === "audio" && user.audioTrack) {
         newRemoteUsers.set(user.uid, {
@@ -62,7 +71,7 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
         user.audioTrack.play();
       }
       
-      setRemoteUsers(newRemoteUsers);
+      setRemoteUsers(new Map(newRemoteUsers));
     });
 
     rtcClient.on("user-unpublished", (user, mediaType) => {
@@ -86,23 +95,24 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
         }
       }
       
-      setRemoteUsers(newRemoteUsers);
+      setRemoteUsers(new Map(newRemoteUsers));
     });
 
     rtcClient.on("user-left", (user) => {
       const newRemoteUsers = new Map(remoteUsers);
       const userData = newRemoteUsers.get(user.uid);
-      userData?.videoTrack?.stop();
-      userData?.audioTrack?.stop();
+      if (userData) {
+        userData.videoTrack?.stop();
+        userData.audioTrack?.stop();
+      }
       newRemoteUsers.delete(user.uid);
-      setRemoteUsers(newRemoteUsers);
+      setRemoteUsers(new Map(newRemoteUsers));
     });
 
     return () => {
-      localAudioTrack?.close();
-      localVideoTrack?.close();
-      rtcClient.leave();
-      rtcClient.removeAllListeners();
+      if (rtcClient) {
+        rtcClient.removeAllListeners();
+      }
     };
   }, []);
 
@@ -112,8 +122,14 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Prevent multiple join attempts
+    if (isJoined || isJoiningRef.current) {
+      console.log("Already joined or joining");
+      return;
+    }
+
+    isJoiningRef.current = true;
     setError(null);
-    setCurrentRole(role);
 
     try {
       // Get token from API
@@ -127,7 +143,8 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
         }),
       });
       
-      const { token } = await response.json();
+      const data = await response.json();
+      const token = data.token;
       
       if (!token) {
         throw new Error("Failed to get token");
@@ -161,14 +178,18 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
       }
 
       setIsJoined(true);
+      isJoiningRef.current = false;
     } catch (err: any) {
       console.error("Join channel error:", err);
       setError(err.message || "Failed to join channel");
+      isJoiningRef.current = false;
     }
   };
 
   const leaveChannel = async () => {
-    if (!client) return;
+    if (!client || isLeavingRef.current) return;
+    
+    isLeavingRef.current = true;
 
     try {
       if (localAudioTrack) {
@@ -185,6 +206,8 @@ export function AgoraProvider({ children }: { children: React.ReactNode }) {
       setRemoteUsers(new Map());
     } catch (err) {
       console.error("Leave channel error:", err);
+    } finally {
+      isLeavingRef.current = false;
     }
   };
 

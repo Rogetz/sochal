@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useAgora } from "./AgoraProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
   Mic, MicOff, Video, VideoOff, PhoneOff, Users, 
   Share2, X, MessageCircle, Send 
 } from "lucide-react";
+import { useAgora } from "./AgoraProvider";
 
 interface AgoraLiveStreamProps {
   channelName: string;
@@ -23,6 +23,7 @@ export function AgoraLiveStream({ channelName, role, userName, onEnd }: AgoraLiv
   const [messages, setMessages] = useState<{ user: string; text: string }[]>([]);
   const [showChat, setShowChat] = useState(true);
   const [copied, setCopied] = useState(false);
+  const hasJoinedRef = useRef(false);
   
   const {
     joinChannel,
@@ -37,14 +38,21 @@ export function AgoraLiveStream({ channelName, role, userName, onEnd }: AgoraLiv
   } = useAgora();
 
   useEffect(() => {
-    const init = async () => {
-      await joinChannel(channelName, role, userName);
+    // Only join if not already joined
+    if (!hasJoinedRef.current && !isJoined) {
+      hasJoinedRef.current = true;
+      joinChannel(channelName, role, userName).finally(() => {
+        setIsJoining(false);
+      });
+    } else {
       setIsJoining(false);
-    };
-    init();
+    }
 
+    // Cleanup on unmount
     return () => {
-      leaveChannel();
+      if (isJoined) {
+        leaveChannel();
+      }
     };
   }, [channelName, role, userName]);
 
@@ -69,6 +77,12 @@ export function AgoraLiveStream({ channelName, role, userName, onEnd }: AgoraLiv
     await navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
   if (isJoining) {
@@ -102,10 +116,16 @@ export function AgoraLiveStream({ channelName, role, userName, onEnd }: AgoraLiv
       {/* Video Container */}
       <div className="relative w-full h-full">
         {/* Remote Videos Grid */}
-        <div 
-          id="remote-video-grid" 
-          className={`grid gap-2 p-2 h-full ${remoteUsers.size === 0 ? "" : "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"}`}
-        >
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 h-full">
+          {Array.from(remoteUsers.entries()).map(([uid, user]) => (
+            <div key={uid} className="relative rounded-xl overflow-hidden bg-gray-900 aspect-video">
+              <div id={`remote-video-${uid}`} className="w-full h-full" />
+              <div className="absolute bottom-2 left-2 bg-black/50 px-2 py-1 rounded text-white text-xs">
+                Viewer {String(uid).slice(-4)}
+              </div>
+            </div>
+          ))}
+          
           {remoteUsers.size === 0 && role === "audience" && (
             <div className="col-span-full flex items-center justify-center h-full">
               <div className="text-center">
@@ -118,17 +138,21 @@ export function AgoraLiveStream({ channelName, role, userName, onEnd }: AgoraLiv
             </div>
           )}
           
-          {Array.from(remoteUsers.entries()).map(([uid, user]) => (
-            <div key={uid} className="relative rounded-xl overflow-hidden bg-gray-900 aspect-video">
-              <div 
-                id={`remote-video-${uid}`} 
-                className="w-full h-full"
-              />
-              <div className="absolute bottom-2 left-2 bg-black/50 px-2 py-1 rounded text-white text-xs">
-                Viewer {String(uid).slice(-4)}
+          {remoteUsers.size === 0 && role === "host" && (
+            <div className="col-span-full flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="size-32 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-4">
+                  <Users className="size-16 text-green-400" />
+                </div>
+                <p className="text-white text-xl">You are live!</p>
+                <p className="text-gray-400 mt-2">Share the link to invite viewers</p>
+                <Button onClick={copyInviteLink} className="mt-4 bg-blue-600">
+                  <Share2 className="size-4 mr-2" />
+                  {copied ? "Copied!" : "Copy Invite Link"}
+                </Button>
               </div>
             </div>
-          ))}
+          )}
         </div>
 
         {/* Local Video (Host) */}
@@ -161,9 +185,6 @@ export function AgoraLiveStream({ channelName, role, userName, onEnd }: AgoraLiv
               >
                 <Share2 className="size-4 text-white" />
               </button>
-              {copied && (
-                <span className="text-green-400 text-xs bg-black/50 rounded px-2 py-1">Copied!</span>
-              )}
               <Button onClick={handleEnd} className="bg-red-500 hover:bg-red-600 size-8 rounded-full p-0">
                 <PhoneOff className="size-4" />
               </Button>

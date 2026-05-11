@@ -1,14 +1,13 @@
 import { NextResponse } from "next/server";
-import { RtcRole, RtcTokenBuilder } from "agora-access-token";
+import { RtcTokenBuilder, RtcRole } from "agora-access-token";
 
 const APP_ID = process.env.NEXT_PUBLIC_AGORA_APP_ID!;
 const APP_CERTIFICATE = process.env.AGORA_APP_CERTIFICATE!;
 
 export async function POST(request: Request) {
   try {
-    const { channelName, uid, role } = await request.json();
+    const { channelName, uid = 0, role } = await request.json();
 
-    // Token expiration time (24 hours)
     const expirationTimeInSeconds = 3600 * 24;
     const currentTimestamp = Math.floor(Date.now() / 1000);
     const privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
