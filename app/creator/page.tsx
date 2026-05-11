@@ -16,8 +16,7 @@ import { ProfileSetupDialog } from "@/components/sochal/ProfileSetupDialog";
 
 import { GoLiveModal } from "@/components/sochal/live/GoLiveModal";
 import { CreateReelModal } from "@/components/sochal/live/CreateReelModal";
-import { LiveStreamView } from "@/components/sochal/live/LiveStreamView";
-import { BattleView } from "@/components/sochal/live/BattleView";
+import { AgoraLiveStream } from "@/components/sochal/live/AgoraLiveStream";
 
 import { addUserReel, getUserReels } from "@/lib/mock-data";
 
@@ -51,8 +50,8 @@ export default function CreatorStudio() {
   const [showCreateReel, setShowCreateReel] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const [isLiveStreaming, setIsLiveStreaming] = useState(false);
-  const [currentStreamId, setCurrentStreamId] = useState<string | null>(null);
+  const [showAgoraStream, setShowAgoraStream] = useState(false);
+  const [currentChannel, setCurrentChannel] = useState("");
 
   const [showDashboard, setShowDashboard] = useState(true);
 
@@ -136,53 +135,11 @@ export default function CreatorStudio() {
     alert("✅ Reel created successfully!");
   };
 
-  const handleStartLiveStream = () => {
+  const handleStartAgoraStream = () => {
     if (!selectedChallenge) return;
-
-    const streamId = `stream_${Date.now()}`;
-
-    setCurrentStreamId(streamId);
-
-    setIsLiveStreaming(true);
-
-    sochal.startStream({
-      topic: selectedChallenge.topic,
-      title: selectedChallenge.title,
-      targetSol: selectedChallenge.targetMin,
-    });
-  };
-
-  const handleEndStream = () => {
-    if (!currentStreamId) return;
-
-    sochal.endStream(currentStreamId);
-
-    setCurrentStreamId(null);
-
-    setIsLiveStreaming(false);
-  };
-
-  const handleSendBattleTip = (
-    amount: number,
-    targetCreator: string
-  ) => {
-    if (!activeBattle) return;
-
-    sochal.sendBattleTip(
-      activeBattle.id,
-      amount,
-      targetCreator
-    );
-  };
-
-  const handleEndBattle = () => {
-    if (!activeBattle) return;
-
-    sochal.endBattle(activeBattle.id);
-
-    setCurrentStreamId(null);
-
-    setIsLiveStreaming(false);
+    const channel = `battle_${Date.now()}`;
+    setCurrentChannel(channel);
+    setShowAgoraStream(true);
   };
 
   if (!wallet) {
@@ -235,30 +192,22 @@ export default function CreatorStudio() {
     );
   }
 
-  if (activeBattle?.status === "active") {
+  if (showAgoraStream) {
     return (
-      <BattleView
-        battle={activeBattle}
-        currentCreatorWallet={wallet.address}
-        onEnd={handleEndBattle}
-        onSendTip={handleSendBattleTip}
+      <AgoraLiveStream
+        channelName={currentChannel}
+        role="host"
+        userName={profile.displayName}
+        onEnd={() => setShowAgoraStream(false)}
       />
     );
   }
 
-  if (isLiveStreaming && currentStreamId) {
+  if (activeBattle?.status === "active") {
     return (
-      <LiveStreamView
-        streamId={currentStreamId}
-        streamTitle={
-          selectedChallenge?.title || "Live Stream"
-        }
-        creatorName={profile.displayName}
-        creatorHandle={profile.handle}
-        creatorAvatar="https://randomuser.me/api/portraits/lego/1.jpg"
-        isCreator={true}
-        onEnd={handleEndStream}
-      />
+      <div className="text-center py-32">
+        <p className="text-white">Battle in progress...</p>
+      </div>
     );
   }
 
@@ -352,7 +301,7 @@ export default function CreatorStudio() {
 
         <Button
           disabled={!selectedChallenge}
-          onClick={handleStartLiveStream}
+          onClick={handleStartAgoraStream}
           className={`h-28 rounded-2xl ${
             selectedChallenge
               ? "bg-gradient-primary shadow-glow"
@@ -361,11 +310,12 @@ export default function CreatorStudio() {
         >
           <div className="flex flex-col items-center gap-2">
             <Radio className="h-8 w-8" />
-            <span>
+            <span className="font-semibold">
               {selectedChallenge
                 ? "Go Live"
                 : "Select Challenge First"}
             </span>
+            <span className="text-xs opacity-80">Powered by Agora</span>
           </div>
         </Button>
       </div>
