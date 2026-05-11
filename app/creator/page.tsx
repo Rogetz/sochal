@@ -1,122 +1,205 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { TOPICS, useSochal, sochal, type Topic } from "@/lib/sochal-store";
+
+import {
+  useSochal,
+  sochal,
+  type Topic,
+} from "@/lib/sochal-store";
+
 import { TopicBadge } from "@/components/sochal/TopicBadge";
 import { SolAmount } from "@/components/sochal/SolAmount";
 import { ProfileSetupDialog } from "@/components/sochal/ProfileSetupDialog";
+
 import { GoLiveModal } from "@/components/sochal/live/GoLiveModal";
 import { CreateReelModal } from "@/components/sochal/live/CreateReelModal";
 import { LiveStreamView } from "@/components/sochal/live/LiveStreamView";
 import { BattleView } from "@/components/sochal/live/BattleView";
+
 import { addUserReel, getUserReels } from "@/lib/mock-data";
-import { 
-  Radio, Trophy, Coins, TrendingUp, Wifi, Camera, Mic, 
-  UserCircle2, StopCircle, Users, Target, Plus, Video, 
-  Sparkles, ChevronDown, ChevronUp, UsersRound, Clock
+
+import {
+  Radio,
+  Trophy,
+  Coins,
+  TrendingUp,
+  UserCircle2,
+  Target,
+  Plus,
+  Video,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
+  UsersRound,
+  Clock,
 } from "lucide-react";
 
 export default function CreatorStudio() {
-  const { wallet, profile, streams, challenges, selectedChallenge, activeBattle } = useSochal();
-  const router = useRouter();
+  const {
+    wallet,
+    profile,
+    streams,
+    challenges,
+    selectedChallenge,
+    activeBattle,
+  } = useSochal();
+
   const [showGoLiveModal, setShowGoLiveModal] = useState(false);
   const [showCreateReel, setShowCreateReel] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+
   const [isLiveStreaming, setIsLiveStreaming] = useState(false);
   const [currentStreamId, setCurrentStreamId] = useState<string | null>(null);
+
   const [showDashboard, setShowDashboard] = useState(true);
+
   const [myReels, setMyReels] = useState<any[]>([]);
 
-  const myStreams = useMemo(
-    () => (wallet ? streams.filter((s) => s.ownerWallet === wallet.address) : []),
-    [streams, wallet],
-  );
-  const liveNow = myStreams.find((s) => s.isLive);
+  useEffect(() => {
+    if (!wallet) return;
+
+    const reels = getUserReels(wallet.address);
+    setMyReels(reels);
+  }, [wallet]);
+
+  const myStreams = useMemo(() => {
+    if (!wallet) return [];
+    return streams.filter((s) => s.ownerWallet === wallet.address);
+  }, [streams, wallet]);
+
   const lifetime = myStreams.reduce((acc, s) => acc + s.potSol, 0);
+
   const lastEarned = myStreams[0]?.potSol ?? 0;
+
   const wins = 0;
 
-  if (wallet && myReels.length === 0) {
-    const reels = getUserReels(wallet.address);
-    if (reels.length !== myReels.length) setMyReels(reels);
-  }
+  const myChallenges = useMemo(() => {
+    if (!wallet) return [];
 
-  const myChallenges = useMemo(
-    () => challenges.filter((c) => c.creatorId === wallet?.address),
-    [challenges, wallet]
-  );
+    return challenges.filter(
+      (c) => c.creatorId === wallet.address
+    );
+  }, [wallet, challenges]);
 
-  const availableChallenges = useMemo(
-    () => challenges.filter((c) => 
-      c.creatorId !== wallet?.address && 
-      c.status === "waiting" &&
-      !c.participants.includes(wallet?.address || "")
-    ),
-    [challenges, wallet]
-  );
+  const availableChallenges = useMemo(() => {
+    if (!wallet) return [];
 
-  const handleCreateChallenge = (topic: Topic, title: string, description: string, targetMin: number) => {
+    return challenges.filter(
+      (c) =>
+        c.creatorId !== wallet.address &&
+        c.status === "waiting" &&
+        !c.participants.includes(wallet.address)
+    );
+  }, [wallet, challenges]);
+
+  const handleCreateChallenge = (
+    topic: Topic,
+    title: string,
+    description: string,
+    targetMin: number
+  ) => {
+    if (!wallet) return;
+
     sochal.createChallenge({
       topic,
       title,
       description,
-      creatorId: wallet!.address,
+      creatorId: wallet.address,
       targetMin,
+      endsAt: Date.now() + 1000 * 60 * 60 * 24,
     });
+
+    setShowGoLiveModal(false);
   };
 
   const handleReelCreated = (reelData: any) => {
     if (!wallet || !profile) return;
+
     const newReel = addUserReel({
       creatorId: wallet.address,
       creatorName: profile.displayName,
       creatorHandle: profile.handle,
-      creatorAvatar: "https://randomuser.me/api/portraits/lego/1.jpg",
+      creatorAvatar:
+        "https://randomuser.me/api/portraits/lego/1.jpg",
       videoUrl: URL.createObjectURL(reelData.videoFile),
       thumbnailUrl: reelData.thumbnail,
       description: reelData.description,
       topic: reelData.topic,
       isLive: false,
     });
-    setMyReels(prev => [newReel, ...prev]);
+
+    setMyReels((prev) => [newReel, ...prev]);
+
     alert("✅ Reel created successfully!");
   };
 
   const handleStartLiveStream = () => {
-    if (selectedChallenge) {
-      setCurrentStreamId(`stream_${Date.now()}`);
-      setIsLiveStreaming(true);
-      sochal.startStream({
-        topic: selectedChallenge.topic,
-        title: selectedChallenge.title,
-        targetSol: selectedChallenge.targetMin,
-      });
-    }
+    if (!selectedChallenge) return;
+
+    const streamId = `stream_${Date.now()}`;
+
+    setCurrentStreamId(streamId);
+
+    setIsLiveStreaming(true);
+
+    sochal.startStream({
+      topic: selectedChallenge.topic,
+      title: selectedChallenge.title,
+      targetSol: selectedChallenge.targetMin,
+    });
   };
 
-  const handleSendBattleTip = (amount: number, targetCreator: string) => {
-    if (activeBattle) {
-      sochal.sendBattleTip(activeBattle.id, amount, targetCreator);
-    }
+  const handleEndStream = () => {
+    if (!currentStreamId) return;
+
+    sochal.endStream(currentStreamId);
+
+    setCurrentStreamId(null);
+
+    setIsLiveStreaming(false);
+  };
+
+  const handleSendBattleTip = (
+    amount: number,
+    targetCreator: string
+  ) => {
+    if (!activeBattle) return;
+
+    sochal.sendBattleTip(
+      activeBattle.id,
+      amount,
+      targetCreator
+    );
   };
 
   const handleEndBattle = () => {
-    if (activeBattle) {
-      sochal.endBattle(activeBattle.id);
-      setIsLiveStreaming(false);
-      setCurrentStreamId(null);
-    }
+    if (!activeBattle) return;
+
+    sochal.endBattle(activeBattle.id);
+
+    setCurrentStreamId(null);
+
+    setIsLiveStreaming(false);
   };
 
   if (!wallet) {
     return (
-      <div className="mx-auto max-w-md text-center py-32 px-4">
-        <h2 className="text-2xl font-bold">Connect a wallet to start your stream</h2>
-        <Link href="/" className="inline-block mt-6">
-          <Button className="bg-gradient-primary shadow-glow">Back to home</Button>
+      <div className="mx-auto max-w-md py-32 text-center">
+        <h2 className="text-3xl font-bold text-white">
+          Connect Wallet
+        </h2>
+
+        <p className="mt-3 text-gray-400">
+          Connect your wallet to start streaming.
+        </p>
+
+        <Link href="/">
+          <Button className="mt-6">
+            Back Home
+          </Button>
         </Link>
       </div>
     );
@@ -124,28 +207,35 @@ export default function CreatorStudio() {
 
   if (!profile) {
     return (
-      <div className="mx-auto max-w-md text-center py-32 px-4">
-        <div className="mx-auto size-14 grid place-items-center rounded-2xl bg-primary/15 text-primary mb-4">
-          <UserCircle2 className="size-6" />
+      <div className="mx-auto max-w-md py-32 text-center">
+        <div className="mx-auto mb-5 grid h-16 w-16 place-items-center rounded-2xl bg-primary/20">
+          <UserCircle2 className="h-8 w-8 text-primary" />
         </div>
-        <h2 className="text-2xl font-bold">Create your creator profile</h2>
-        <p className="text-muted-foreground mt-2">Pick a unique handle so fans can find and tip you.</p>
-        <Button onClick={() => setProfileOpen(true)} className="mt-6 bg-gradient-primary shadow-glow">
-          Set up profile
+
+        <h2 className="text-3xl font-bold text-white">
+          Create Creator Profile
+        </h2>
+
+        <p className="mt-3 text-gray-400">
+          Create your public creator identity.
+        </p>
+
+        <Button
+          onClick={() => setProfileOpen(true)}
+          className="mt-6"
+        >
+          Setup Profile
         </Button>
-        <ProfileSetupDialog open={profileOpen} onOpenChange={setProfileOpen} />
+
+        <ProfileSetupDialog
+          open={profileOpen}
+          onOpenChange={setProfileOpen}
+        />
       </div>
     );
   }
 
-  const stats = [
-    { icon: Coins, label: "Lifetime earned", value: lifetime, accent: "text-gradient" },
-    { icon: TrendingUp, label: "Last live earned", value: lastEarned },
-    { icon: Trophy, label: "Bracket wins", value: wins, isCount: true },
-  ];
-
-  // If in an active battle, show battle view
-  if (activeBattle && activeBattle.status === "active") {
+  if (activeBattle?.status === "active") {
     return (
       <BattleView
         battle={activeBattle}
@@ -156,87 +246,127 @@ export default function CreatorStudio() {
     );
   }
 
-  // If currently live streaming, show the live stream view
   if (isLiveStreaming && currentStreamId) {
     return (
       <LiveStreamView
         streamId={currentStreamId}
-        streamTitle={selectedChallenge?.title || "Live Battle"}
+        streamTitle={
+          selectedChallenge?.title || "Live Stream"
+        }
         creatorName={profile.displayName}
         creatorHandle={profile.handle}
         creatorAvatar="https://randomuser.me/api/portraits/lego/1.jpg"
         isCreator={true}
-        onEnd={() => {
-          setIsLiveStreaming(false);
-          setCurrentStreamId(null);
-          sochal.endStream(currentStreamId);
-        }}
+        onEnd={handleEndStream}
       />
     );
   }
 
+  const stats = [
+    {
+      icon: Coins,
+      label: "Lifetime Earned",
+      value: lifetime,
+    },
+    {
+      icon: TrendingUp,
+      label: "Last Stream",
+      value: lastEarned,
+    },
+    {
+      icon: Trophy,
+      label: "Wins",
+      value: wins,
+      isCount: true,
+    },
+  ];
+
   return (
-    <div className="mx-auto max-w-5xl px-4 md:px-8 py-8 md:py-12">
-      <div className="flex items-center justify-between flex-wrap gap-4 mb-8">
+    <div className="mx-auto max-w-6xl px-4 py-8">
+      <div className="mb-8 flex items-center justify-between">
         <div>
-          <div className="text-xs uppercase tracking-wider text-primary/80 font-mono mb-2">
-            Studio · @{profile.handle}
-          </div>
-          <h1 className="text-3xl md:text-4xl font-bold">Ready to take the stage, {profile.displayName}?</h1>
-          <p className="text-muted-foreground mt-1">Create reels, start challenges, or go live!</p>
+          <p className="text-sm text-primary">
+            @{profile.handle}
+          </p>
+
+          <h1 className="text-4xl font-bold text-white">
+            Creator Studio
+          </h1>
+
+          <p className="mt-1 text-gray-400">
+            Create reels, go live and earn SOL.
+          </p>
         </div>
+
         <Button
           variant="outline"
-          onClick={() => setShowDashboard(!showDashboard)}
-          className="border-gray-700 text-gray-400 hover:text-white"
+          onClick={() =>
+            setShowDashboard(!showDashboard)
+          }
         >
-          {showDashboard ? <ChevronUp className="size-4 mr-1" /> : <ChevronDown className="size-4 mr-1" />}
-          {showDashboard ? "Hide Dashboard" : "Show Dashboard"}
+          {showDashboard ? (
+            <>
+              <ChevronUp className="mr-2 h-4 w-4" />
+              Hide
+            </>
+          ) : (
+            <>
+              <ChevronDown className="mr-2 h-4 w-4" />
+              Show
+            </>
+          )}
         </Button>
       </div>
 
       {selectedChallenge && (
-        <div className="mb-6 rounded-2xl border border-green-500/30 bg-green-500/10 p-4 flex items-center justify-between">
+        <div className="mb-6 rounded-2xl border border-green-500/30 bg-green-500/10 p-4">
           <div className="flex items-center gap-3">
-            <Target className="size-5 text-green-400" />
+            <Target className="h-5 w-5 text-green-400" />
             <div>
               <p className="text-xs text-green-400">ACTIVE CHALLENGE</p>
               <p className="font-semibold text-white">{selectedChallenge.title}</p>
               <p className="text-xs text-gray-400">#{selectedChallenge.topic} · {selectedChallenge.targetMin} SOL target</p>
             </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sochal.setSelectedChallenge(null)}
+              className="ml-auto border-red-500/30 text-red-400 hover:bg-red-500/10"
+            >
+              Clear
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => sochal.setSelectedChallenge(null)}
-            className="border-red-500/30 text-red-400 hover:bg-red-500/10"
-          >
-            Clear
-          </Button>
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 mb-8">
+      <div className="mb-8 grid grid-cols-2 gap-4">
         <Button
           onClick={() => setShowCreateReel(true)}
-          className="h-28 flex flex-col gap-2 bg-purple-600 hover:bg-purple-700 text-white rounded-2xl"
+          className="h-28 rounded-2xl bg-purple-600 text-white hover:bg-purple-700"
         >
-          <Video className="size-8" />
-          <span className="font-semibold">Create Reel</span>
-          <span className="text-xs opacity-80">Record & post video</span>
+          <div className="flex flex-col items-center gap-2">
+            <Video className="h-8 w-8" />
+            <span>Create Reel</span>
+          </div>
         </Button>
+
         <Button
-          onClick={handleStartLiveStream}
           disabled={!selectedChallenge}
-          className={`h-28 flex flex-col gap-2 rounded-2xl ${
+          onClick={handleStartLiveStream}
+          className={`h-28 rounded-2xl ${
             selectedChallenge
-              ? "bg-gradient-primary shadow-glow animate-pulse-glow"
-              : "bg-gray-700 cursor-not-allowed opacity-50"
-          } text-white`}
+              ? "bg-gradient-primary shadow-glow"
+              : "opacity-50 cursor-not-allowed"
+          }`}
         >
-          <Radio className="size-8" />
-          <span className="font-semibold">{selectedChallenge ? "Go Live Now" : "Select Challenge First"}</span>
-          <span className="text-xs opacity-80">Start streaming live</span>
+          <div className="flex flex-col items-center gap-2">
+            <Radio className="h-8 w-8" />
+            <span>
+              {selectedChallenge
+                ? "Go Live"
+                : "Select Challenge First"}
+            </span>
+          </div>
         </Button>
       </div>
 
@@ -272,62 +402,85 @@ export default function CreatorStudio() {
 
       {showDashboard && (
         <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-            {stats.map((s) => (
-              <div key={s.label} className="rounded-2xl border border-border bg-card p-5">
+          <div className="mb-8 grid gap-4 md:grid-cols-3">
+            {stats.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-2xl border border-border bg-card p-5"
+              >
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-muted-foreground">{s.label}</span>
-                  <s.icon className="size-4 text-primary" />
+                  <span className="text-sm text-muted-foreground">
+                    {item.label}
+                  </span>
+
+                  <item.icon className="h-4 w-4 text-primary" />
                 </div>
-                <div className={`mt-2 text-3xl font-bold ${s.accent ?? ""}`}>
-                  {s.isCount ? s.value : <SolAmount value={s.value} />}
+
+                <div className="mt-4 text-3xl font-bold text-white">
+                  {item.isCount ? (
+                    item.value
+                  ) : (
+                    <SolAmount value={item.value} />
+                  )}
                 </div>
               </div>
             ))}
           </div>
 
           <div className="mb-8">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-semibold text-lg flex items-center gap-2">
-                <Plus className="size-4 text-primary" /> Your Challenges
-              </h3>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">
+                Your Challenges
+              </h2>
+
               <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowGoLiveModal(true)}
-                className="border-blue-500/50 text-blue-400 text-xs"
+                onClick={() =>
+                  setShowGoLiveModal(true)
+                }
               >
-                Create New
+                <Plus className="mr-2 h-4 w-4" />
+                Create Challenge
               </Button>
             </div>
+
             {myChallenges.length === 0 ? (
-              <div className="text-center py-8 rounded-2xl border border-dashed border-gray-700">
-                <p className="text-gray-500 text-sm">No challenges yet. Click "Create New" to start one.</p>
+              <div className="rounded-2xl border border-dashed border-gray-700 py-12 text-center">
+                <p className="text-gray-500">No challenges yet. Create one to go live!</p>
               </div>
             ) : (
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid gap-4 md:grid-cols-2">
                 {myChallenges.map((challenge) => (
                   <div
                     key={challenge.id}
                     onClick={() => sochal.setSelectedChallenge(challenge)}
-                    className={`rounded-2xl border p-4 cursor-pointer transition-all ${
+                    className={`cursor-pointer rounded-2xl border p-5 transition-all ${
                       selectedChallenge?.id === challenge.id
                         ? "border-green-500 bg-green-500/10"
-                        : "border-gray-700 bg-gray-900 hover:border-primary/40"
+                        : "border-gray-800 bg-black/40 hover:border-primary/40"
                     }`}
                   >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-semibold text-white">{challenge.title}</h4>
-                        <TopicBadge topic={challenge.topic} size="sm" />
-                      </div>
-                      <span className="text-xs text-gray-500">{challenge.participants.length} joined</span>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-white">
+                        {challenge.title}
+                      </h3>
+
+                      <TopicBadge
+                        topic={challenge.topic}
+                        size="sm"
+                      />
                     </div>
-                    <p className="text-sm text-gray-400 mt-2 line-clamp-2">{challenge.description}</p>
-                    <div className="flex justify-between items-center mt-3 text-xs">
-                      <span className="text-yellow-400">🎯 {challenge.targetMin} SOL target</span>
-                      <span className={`text-xs ${challenge.status === "waiting" ? "text-yellow-500" : "text-green-500"}`}>
-                        {challenge.status === "waiting" ? "Waiting for opponents..." : "Active"}
+
+                    <p className="mt-3 text-sm text-gray-400">
+                      {challenge.description}
+                    </p>
+
+                    <div className="mt-4 flex items-center justify-between text-sm">
+                      <span className="text-yellow-400">
+                        🎯 {challenge.targetMin} SOL
+                      </span>
+
+                      <span className="text-green-400">
+                        {challenge.status}
                       </span>
                     </div>
                   </div>
@@ -338,59 +491,45 @@ export default function CreatorStudio() {
 
           {availableChallenges.length > 0 && (
             <div className="mb-8">
-              <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
-                <UsersRound className="size-4 text-primary" /> Join Existing Challenges
-              </h3>
-              <div className="grid md:grid-cols-2 gap-4">
+              <h2 className="mb-4 text-xl font-bold text-white">
+                Join Existing Challenges
+              </h2>
+              <div className="grid gap-4 md:grid-cols-2">
                 {availableChallenges.map((challenge) => {
                   const slotsRemaining = 2 - challenge.participants.length;
                   return (
                     <div
                       key={challenge.id}
                       onClick={() => sochal.joinChallenge(challenge.id)}
-                      className="group rounded-2xl border border-gray-700 bg-gradient-to-br from-gray-900 to-gray-950 p-4 cursor-pointer hover:border-green-500/50 hover:shadow-lg hover:shadow-green-500/10 transition-all duration-300"
+                      className="cursor-pointer rounded-2xl border border-gray-800 bg-black/40 p-5 transition-all hover:border-green-500/40"
                     >
-                      <div className="flex items-start gap-4">
-                        <div className="size-16 rounded-xl bg-gradient-to-br from-blue-500/20 to-purple-500/20 flex items-center justify-center group-hover:scale-105 transition-transform">
-                          <span className="text-3xl">
-                            {challenge.topic === "Singing" && "🎤"}
-                            {challenge.topic === "Dancing" && "💃"}
-                            {challenge.topic === "Comedy" && "😂"}
-                            {challenge.topic === "Rap" && "🎙️"}
-                            {challenge.topic === "Gaming" && "🎮"}
-                            {!["Singing","Dancing","Comedy","Rap","Gaming"].includes(challenge.topic) && "🏆"}
-                          </span>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h3 className="font-semibold text-white">
+                            {challenge.title}
+                          </h3>
+                          <TopicBadge topic={challenge.topic} size="sm" />
                         </div>
-                        
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <h4 className="font-semibold text-white group-hover:text-green-400 transition">
-                                {challenge.title}
-                              </h4>
-                              <TopicBadge topic={challenge.topic} size="sm" />
-                            </div>
-                            <span className="text-xs text-yellow-400">🎯 {challenge.targetMin} SOL</span>
-                          </div>
-                          <p className="text-sm text-gray-400 mt-1 line-clamp-1">
-                            {challenge.description}
-                          </p>
-                          <div className="flex items-center gap-4 mt-2 text-xs">
-                            <div className="flex items-center gap-1 text-gray-500">
-                              <UsersRound className="size-3" />
-                              <span>{slotsRemaining} slot{slotsRemaining !== 1 ? 's' : ''} remaining</span>
-                            </div>
-                            <div className="flex items-center gap-1 text-gray-500">
-                              <Clock className="size-3" />
-                              <span>Open</span>
-                            </div>
-                          </div>
-                        </div>
+                        <span className="text-xs text-yellow-400">
+                          🎯 {challenge.targetMin} SOL
+                        </span>
                       </div>
-                      
+                      <p className="mt-2 text-sm text-gray-400">
+                        {challenge.description}
+                      </p>
+                      <div className="mt-3 flex items-center gap-4 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <UsersRound className="h-3 w-3" />
+                          {slotsRemaining} slot{slotsRemaining !== 1 ? 's' : ''} remaining
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3" />
+                          Open
+                        </span>
+                      </div>
                       <Button 
                         size="sm" 
-                        className="mt-4 w-full bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30 group-hover:bg-green-600/40 transition-all"
+                        className="mt-3 w-full bg-green-600/20 text-green-400 hover:bg-green-600/30"
                         onClick={(e) => {
                           e.stopPropagation();
                           sochal.joinChallenge(challenge.id);
@@ -407,27 +546,16 @@ export default function CreatorStudio() {
 
           {myReels.length > 0 && (
             <div>
-              <h3 className="font-semibold text-lg mb-4 flex items-center gap-2">
-                <Video className="size-4 text-primary" /> Your Recent Reels
-              </h3>
+              <h2 className="mb-4 text-xl font-bold text-white">
+                Recent Reels
+              </h2>
               <div className="grid grid-cols-3 gap-2">
                 {myReels.slice(0, 3).map((reel) => (
-                  <div key={reel.id} className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group cursor-pointer">
-                    <video src={reel.videoUrl} className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                      <span className="text-white text-xs">▶️</span>
-                    </div>
-                    <div className="absolute bottom-1 left-1 bg-black/50 rounded px-1 text-[10px] text-white">
-                      {reel.topic}
-                    </div>
+                  <div key={reel.id} className="aspect-[9/16] overflow-hidden rounded-lg bg-gray-800">
+                    <video src={reel.videoUrl} className="h-full w-full object-cover" />
                   </div>
                 ))}
               </div>
-              {myReels.length > 3 && (
-                <p className="text-center text-gray-500 text-xs mt-2">
-                  +{myReels.length - 3} more reels in your profile
-                </p>
-              )}
             </div>
           )}
         </>
@@ -437,13 +565,7 @@ export default function CreatorStudio() {
         isOpen={showGoLiveModal}
         onClose={() => setShowGoLiveModal(false)}
         onCreateChallenge={handleCreateChallenge}
-        onJoinExisting={() => {
-          setShowGoLiveModal(false);
-          setTimeout(() => {
-            const element = document.querySelector('[class*="Join Existing Challenges"]')?.parentElement;
-            if (element) element.scrollIntoView({ behavior: "smooth", block: "start" });
-          }, 100);
-        }}
+        onJoinExisting={() => setShowGoLiveModal(false)}
       />
 
       <CreateReelModal
@@ -452,7 +574,10 @@ export default function CreatorStudio() {
         onReelCreated={handleReelCreated}
       />
 
-      <ProfileSetupDialog open={profileOpen} onOpenChange={setProfileOpen} />
+      <ProfileSetupDialog
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+      />
     </div>
   );
 }

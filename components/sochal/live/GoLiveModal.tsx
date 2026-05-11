@@ -1,5 +1,6 @@
+"use client";
+
 import { useState } from "react";
-import { TopicTag } from "@/types/sochal.types";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,26 +8,27 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Radio, Users, Plus } from "lucide-react";
 
+// Use the same Topic type as your store
+type Topic = "Singing" | "Dancing" | "Comedy" | "Rap" | "Gaming" | "Cooking";
+
 const TOPICS = [
-  { value: TopicTag.Singing, label: "🎤 Singing" },
-  { value: TopicTag.Dancing, label: "💃 Dancing" },
-  { value: TopicTag.Comedy, label: "😂 Comedy" },
-  { value: TopicTag.Rap, label: "🎙️ Rap" },
-  { value: TopicTag.Beatbox, label: "🎵 Beatbox" },
-  { value: TopicTag.Gaming, label: "🎮 Gaming" },
-  { value: TopicTag.Magic, label: "🪄 Magic" },
+  { value: "Singing" as Topic, label: "🎤 Singing" },
+  { value: "Dancing" as Topic, label: "💃 Dancing" },
+  { value: "Comedy" as Topic, label: "😂 Comedy" },
+  { value: "Rap" as Topic, label: "🎙️ Rap" },
+  { value: "Gaming" as Topic, label: "🎮 Gaming" },
 ];
 
 interface GoLiveModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreateChallenge: (topic: TopicTag, title: string, description: string, targetMin: number) => void;
+  onCreateChallenge: (topic: Topic, title: string, description: string, targetMin: number) => void;
   onJoinExisting: () => void;
 }
 
 export function GoLiveModal({ isOpen, onClose, onCreateChallenge, onJoinExisting }: GoLiveModalProps) {
   const [mode, setMode] = useState<"select" | "create" | "join">("select");
-  const [selectedTopic, setSelectedTopic] = useState<TopicTag>(TopicTag.Singing);
+  const [selectedTopic, setSelectedTopic] = useState<Topic>("Singing");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [targetMin, setTargetMin] = useState(10);

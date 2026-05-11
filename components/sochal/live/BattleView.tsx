@@ -5,8 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { 
   Mic, MicOff, Video, VideoOff, X, Send, Users, 
-  FlipHorizontal, Share2, UserPlus, Copy, Check,
-  MessageCircle, AlertCircle, Trophy, Sword, Clock
+  FlipHorizontal, Share2, Copy, Check,
+  MessageCircle, AlertCircle, Trophy, Clock
 } from "lucide-react";
 import { mediaService } from "@/lib/media";
 import { Battle } from "@/lib/battle-service";
@@ -33,7 +33,8 @@ export function BattleView({
   const [showChat, setShowChat] = useState(true);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(300); // 5 minutes in seconds
+  const [timeLeft, setTimeLeft] = useState(300);
+  const [loading, setLoading] = useState(true);
   const [messages, setMessages] = useState<{ user: string; text: string; isTip?: boolean }[]>([
     { user: "System", text: "🎮 BATTLE STARTED! Tip your favorite creator to help them win!" }
   ]);
@@ -45,30 +46,33 @@ export function BattleView({
   
   const myTips = isCreatorA ? battle.tipsA : isCreatorB ? battle.tipsB : 0;
   const opponentTips = isCreatorA ? battle.tipsB : isCreatorB ? battle.tipsA : 0;
-  const myName = isCreatorA ? battle.creatorAName : isCreatorB ? battle.creatorBName : null;
-  const opponentName = isCreatorA ? battle.creatorBName : isCreatorB ? battle.creatorAName : null;
-  const opponentHandle = isCreatorA ? battle.creatorBHandle : isCreatorB ? battle.creatorAHandle : null;
-  const opponentAvatar = isCreatorA ? battle.creatorBAvatar : isCreatorB ? battle.creatorAAvatar : null;
+  const myName = isCreatorA ? battle.creatorAName : isCreatorB ? battle.creatorBName || "" : "";
+  const opponentName = isCreatorA ? battle.creatorBName || "" : isCreatorB ? battle.creatorAName : "";
+  const opponentAvatar = isCreatorA ? battle.creatorBAvatar || "" : isCreatorB ? battle.creatorAAvatar : "";
   
   const isViewer = !isCurrentCreator;
+  const totalTips = battle.tipsA + battle.tipsB;
+  const myPercentage = totalTips > 0 ? (myTips / totalTips) * 100 : 50;
+  const opponentPercentage = totalTips > 0 ? (opponentTips / totalTips) * 100 : 50;
+  const winner = battle.tipsA > battle.tipsB ? battle.creatorAName : battle.tipsB > battle.tipsA ? (battle.creatorBName || "") : null;
+  const isBattleOver = timeLeft === 0 || battle.status === "completed";
   
   useEffect(() => {
-    if (isCurrentCreator) {
-      startCamera();
-    }
-    
-    // Timer countdown
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          return 0;
+    const init = async () => {
+      if (isCurrentCreator) {
+        const stream = await mediaService.startStream(true, true);
+        if (stream && videoRef.current) {
+          videoRef.current.srcObject = stream;
         }
-        return prev - 1;
-      });
+      }
+      setLoading(false);
+    };
+    init();
+    
+    const timer = setInterval(() => {
+      setTimeLeft(prev => prev > 0 ? prev - 1 : 0);
     }, 1000);
     
-    // Simulate viewer count
     const viewerInterval = setInterval(() => {
       setViewers(prev => prev + Math.floor(Math.random() * 10));
     }, 10000);
@@ -76,15 +80,11 @@ export function BattleView({
     return () => {
       clearInterval(timer);
       clearInterval(viewerInterval);
+      if (isCurrentCreator) {
+        mediaService.stopStream();
+      }
     };
   }, [isCurrentCreator]);
-
-  const startCamera = async () => {
-    const stream = await mediaService.startStream(true, true);
-    if (stream && videoRef.current) {
-      videoRef.current.srcObject = stream;
-    }
-  };
 
   const handleToggleVideo = async () => {
     const newState = !isVideoOff;
@@ -110,7 +110,7 @@ export function BattleView({
   };
 
   const sendTip = (amount: number, targetCreator: string) => {
-    const targetName = targetCreator === battle.creatorA ? battle.creatorAName : battle.creatorBName;
+    const targetName = targetCreator === battle.creatorA ? battle.creatorAName : (battle.creatorBName || "creator");
     onSendTip(amount, targetCreator);
     setMessages([...messages, { 
       user: "You", 
@@ -125,21 +125,19 @@ export function BattleView({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getWinner = () => {
-    if (battle.tipsA > battle.tipsB) return battle.creatorAName;
-    if (battle.tipsB > battle.tipsA) return battle.creatorBName;
-    return null;
-  };
-
-  const winner = getWinner();
-  const isBattleOver = timeLeft === 0;
-  const totalTips = battle.tipsA + battle.tipsB;
-  const myPercentage = totalTips > 0 ? (myTips / totalTips) * 100 : 50;
-  const opponentPercentage = totalTips > 0 ? (opponentTips / totalTips) * 100 : 50;
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-black flex items-center justify-center">
+        <div className="text-center">
+          <div className="size-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+          <p className="text-white">Starting battle...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black">
-      {/* Split Screen Layout */}
       <div className="flex h-full">
         {/* LEFT - Creator A */}
         <div className="flex-1 relative border-r border-gray-700">
@@ -151,16 +149,20 @@ export function BattleView({
           {isCreatorA ? (
             <video ref={videoRef} autoPlay playsInline muted={isMuted} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-purple-900/50 to-black">
-              <img src={battle.creatorAAvatar} alt="" className="size-32 rounded-full border-4 border-purple-500" />
-              <p className="text-white mt-4">Waiting for {battle.creatorAName}...</p>
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-purple-900/50 to-black">
+              <img src={battle.creatorAAvatar} alt="" className="size-32 rounded-full border-4 border-purple-500 object-cover" />
+              <p className="text-white mt-4 font-semibold">{battle.creatorAName}</p>
+              <p className="text-gray-400 text-sm">@{battle.creatorAHandle}</p>
             </div>
           )}
           
-          {isViewer && (
-            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20">
-              <Button onClick={() => sendTip(1, battle.creatorA)} className="bg-purple-600 hover:bg-purple-700">
-                Tip {battle.creatorAName}
+          {isViewer && battle.creatorA && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
+              <Button 
+                onClick={() => sendTip(1, battle.creatorA)} 
+                className="bg-purple-600 hover:bg-purple-700 rounded-full px-6"
+              >
+                Tip {battle.creatorAName.split(' ')[0]}
               </Button>
             </div>
           )}
@@ -169,23 +171,33 @@ export function BattleView({
         {/* RIGHT - Creator B */}
         <div className="flex-1 relative">
           <div className="absolute top-4 right-4 z-20 bg-black/70 rounded-lg px-3 py-2 text-right">
-            <p className="text-white font-bold">{battle.creatorBName}</p>
+            <p className="text-white font-bold">{battle.creatorBName || "Waiting..."}</p>
             <p className="text-yellow-400 text-sm">🏆 {battle.tipsB.toFixed(1)} SOL</p>
           </div>
           
           {isCreatorB ? (
             <video ref={videoRef} autoPlay playsInline muted={isMuted} className="w-full h-full object-cover" />
           ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-900/50 to-black">
-              <img src={battle.creatorBAvatar || ""} alt="" className="size-32 rounded-full border-4 border-blue-500" />
-              <p className="text-white mt-4">Waiting for {battle.creatorBName}...</p>
+            <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-blue-900/50 to-black">
+              {battle.creatorBAvatar ? (
+                <img src={battle.creatorBAvatar} alt="" className="size-32 rounded-full border-4 border-blue-500 object-cover" />
+              ) : (
+                <div className="size-32 rounded-full border-4 border-blue-500 flex items-center justify-center bg-gray-800">
+                  <span className="text-4xl">?</span>
+                </div>
+              )}
+              <p className="text-white mt-4 font-semibold">{battle.creatorBName || "Waiting for opponent..."}</p>
+              {battle.creatorBHandle && <p className="text-gray-400 text-sm">@{battle.creatorBHandle}</p>}
             </div>
           )}
           
-          {isViewer && (
-            <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20">
-              <Button onClick={() => sendTip(1, battle.creatorB)} className="bg-blue-600 hover:bg-blue-700">
-                Tip {battle.creatorBName}
+          {isViewer && battle.creatorB && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-20">
+              <Button 
+                onClick={() => sendTip(1, battle.creatorB!)} 
+                className="bg-blue-600 hover:bg-blue-700 rounded-full px-6"
+              >
+                Tip {battle.creatorBName?.split(' ')[0] || "Creator"}
               </Button>
             </div>
           )}
@@ -194,14 +206,14 @@ export function BattleView({
       
       {/* VS Badge */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-30">
-        <div className="size-20 rounded-full bg-red-600 flex items-center justify-center shadow-2xl">
+        <div className="size-20 rounded-full bg-red-600 flex items-center justify-center shadow-2xl animate-pulse">
           <span className="text-2xl font-bold text-white">VS</span>
         </div>
       </div>
       
-      {/* VS Progress Bar (Who's winning) */}
-      <div className="absolute bottom-28 left-0 right-0 z-20">
-        <div className="flex h-2">
+      {/* Progress Bar */}
+      <div className="absolute bottom-20 left-0 right-0 z-20">
+        <div className="flex h-3">
           <div className="bg-purple-500 transition-all duration-300" style={{ width: `${myPercentage}%` }} />
           <div className="bg-blue-500 transition-all duration-300" style={{ width: `${opponentPercentage}%` }} />
         </div>
@@ -240,7 +252,7 @@ export function BattleView({
         </div>
       </div>
       
-      {/* Battle Winner Announcement */}
+      {/* Winner Announcement */}
       {isBattleOver && winner && (
         <div className="absolute inset-0 z-50 bg-black/80 flex items-center justify-center">
           <div className="text-center bg-gradient-to-r from-yellow-600 to-yellow-800 rounded-2xl p-8 max-w-md">
@@ -257,7 +269,7 @@ export function BattleView({
       
       {/* Creator Controls */}
       {isCurrentCreator && !isBattleOver && (
-        <div className="absolute bottom-36 left-1/2 -translate-x-1/2 p-4 z-10">
+        <div className="absolute bottom-36 left-1/2 -translate-x-1/2 z-10">
           <div className="flex justify-center gap-4 bg-black/50 rounded-full p-2">
             <button onClick={handleToggleAudio} className="size-10 rounded-full bg-black/60 flex items-center justify-center">
               {isMuted ? <MicOff className="size-5 text-white" /> : <Mic className="size-5 text-white" />}
@@ -289,25 +301,33 @@ export function BattleView({
           </div>
           <div className="p-3 border-t border-gray-800">
             <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-              {[0.1, 0.5, 1, 5, 10].map(amount => (
+              {[0.1, 0.5, 1, 5].map(amount => (
                 <div key={amount} className="flex gap-1">
                   <button 
-                    onClick={() => sendTip(amount, battle.creatorA)} 
-                    className="px-3 py-1.5 rounded-full bg-purple-500/20 text-purple-400 text-xs font-medium"
+                    onClick={() => battle.creatorA && sendTip(amount, battle.creatorA)} 
+                    className="px-2 py-1 rounded-full bg-purple-500/20 text-purple-400 text-xs"
                   >
-                    🎁 {amount} to {battle.creatorAName?.split(' ')[0]}
+                    {amount} to A
                   </button>
-                  <button 
-                    onClick={() => sendTip(amount, battle.creatorB)} 
-                    className="px-3 py-1.5 rounded-full bg-blue-500/20 text-blue-400 text-xs font-medium"
-                  >
-                    🎁 {amount} to {battle.creatorBName?.split(' ')[0]}
-                  </button>
+                  {battle.creatorB && (
+                    <button 
+                      onClick={() => sendTip(amount, battle.creatorB!)} 
+                      className="px-2 py-1 rounded-full bg-blue-500/20 text-blue-400 text-xs"
+                    >
+                      {amount} to B
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
             <div className="flex gap-2">
-              <Input value={message} onChange={(e) => setMessage(e.target.value)} placeholder="Say something..." className="flex-1 bg-gray-800 border-gray-700 text-white text-sm" onKeyPress={(e) => e.key === "Enter" && sendMessage()} />
+              <Input 
+                value={message} 
+                onChange={(e) => setMessage(e.target.value)} 
+                placeholder="Say something..." 
+                className="flex-1 bg-gray-800 border-gray-700 text-white text-sm" 
+                onKeyPress={(e) => e.key === "Enter" && sendMessage()} 
+              />
               <Button onClick={sendMessage} size="sm" className="bg-blue-600">
                 <Send className="size-4" />
               </Button>

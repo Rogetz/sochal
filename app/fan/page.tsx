@@ -9,7 +9,7 @@ import { ChallengeBrowser } from "@/components/sochal/challenges/ChallengeBrowse
 import { CreateReelModal } from "@/components/sochal/live/CreateReelModal";
 import { LiveStreamView } from "@/components/sochal/live/LiveStreamView";
 import { ProfileSetupDialog } from "@/components/sochal/ProfileSetupDialog";
-import { MOCK_LIVE_STREAMS, getUserReels } from "@/lib/mock-data";
+import { MOCK_LIVE_STREAMS, getUserReels, type MockReel } from "@/lib/mock-data";
 import { 
   Home, Compass, Users, Radio, Upload, User, 
   LogIn, Heart, Search, Sparkles, Flame, X, Edit3, Settings,
@@ -25,7 +25,7 @@ export default function FanPage() {
   const [activeLiveStream, setActiveLiveStream] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
-  const [myReels, setMyReels] = useState<any[]>([]);
+  const [myReels, setMyReels] = useState<MockReel[]>([]);
   const [profileData, setProfileData] = useState({
     displayName: profile?.displayName || "",
     handle: profile?.handle || "",
@@ -284,10 +284,10 @@ export default function FanPage() {
   );
 }
 
-// Profile Screen Component (keep from your original)
+// Profile Screen Component
 function ProfileScreen({ myReels, profile, profileData, setProfileData, onEditProfile, onSettings, onCreateReel }: any) {
   const [activeReelTab, setActiveReelTab] = useState<"reels" | "likes">("reels");
-  const totalLikes = myReels.reduce((acc: number, reel: any) => acc + (reel.likes || 0), 0);
+  const totalLikes = myReels.reduce((acc: number, reel: MockReel) => acc + (reel.likes || 0), 0);
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
@@ -327,7 +327,7 @@ function ProfileScreen({ myReels, profile, profileData, setProfileData, onEditPr
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-1">
-            {myReels.map((reel) => (
+            {myReels.map((reel: MockReel) => (
               <div key={reel.id} className="aspect-[9/16] bg-gray-800 rounded-lg overflow-hidden relative group cursor-pointer">
                 <video src={reel.videoUrl} className="w-full h-full object-cover" />
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition flex items-center justify-center gap-2">
@@ -372,7 +372,6 @@ function EditProfileModal({ isOpen, onClose, profileData, setProfileData, onSave
 // Settings Modal
 function SettingsModal({ isOpen, onClose }: any) {
   if (!isOpen) return null;
-  const { sochal } = require("@/lib/sochal-store");
   return (
     <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center" onClick={onClose}>
       <div className="bg-gray-900 rounded-2xl p-6 max-w-md w-full mx-4" onClick={(e) => e.stopPropagation()}>
