@@ -14,20 +14,76 @@ import {
 } from "@solana/kit";
 import { VAULT_PROGRAM_ADDRESS } from "../programs";
 
-/** VaultAlreadyExists: Vault already exists */
-export const VAULT_ERROR__VAULT_ALREADY_EXISTS = 0x1770; // 6000
-/** InvalidAmount: Invalid amount */
-export const VAULT_ERROR__INVALID_AMOUNT = 0x1771; // 6001
+/** Unauthorized: Unauthorized */
+export const VAULT_ERROR__UNAUTHORIZED = 0x1770; // 6000
+/** TargetNotReached: Target not reached */
+export const VAULT_ERROR__TARGET_NOT_REACHED = 0x1771; // 6001
+/** AlreadyClosed: Already closed */
+export const VAULT_ERROR__ALREADY_CLOSED = 0x1772; // 6002
+/** TooEarly: Time extension not yet elapsed */
+export const VAULT_ERROR__TOO_EARLY = 0x1773; // 6003
+/** ChallengeActive: Challenge is still active */
+export const VAULT_ERROR__CHALLENGE_ACTIVE = 0x1774; // 6004
+/** InvalidTopic: Invalid topic */
+export const VAULT_ERROR__INVALID_TOPIC = 0x1775; // 6005
+/** DuplicateParticipant: Duplicate participant */
+export const VAULT_ERROR__DUPLICATE_PARTICIPANT = 0x1776; // 6006
+/** TournamentFull: Tournament full */
+export const VAULT_ERROR__TOURNAMENT_FULL = 0x1777; // 6007
+/** InvalidRound: Invalid round */
+export const VAULT_ERROR__INVALID_ROUND = 0x1778; // 6008
+/** RoundNotComplete: Round not complete */
+export const VAULT_ERROR__ROUND_NOT_COMPLETE = 0x1779; // 6009
+/** MaxTippersReached: Maximum tippers reached */
+export const VAULT_ERROR__MAX_TIPPERS_REACHED = 0x177a; // 6010
+/** InvalidMenuIndex: Invalid menu index */
+export const VAULT_ERROR__INVALID_MENU_INDEX = 0x177b; // 6011
+/** InvalidMenuPrice: Tip amount does not match menu price */
+export const VAULT_ERROR__INVALID_MENU_PRICE = 0x177c; // 6012
+/** Overflow: Arithmetic overflow */
+export const VAULT_ERROR__OVERFLOW = 0x177d; // 6013
+/** TournamentNotActive: Tournament not active */
+export const VAULT_ERROR__TOURNAMENT_NOT_ACTIVE = 0x177e; // 6014
+/** InvalidSide: Invalid creator side (0 or 1) */
+export const VAULT_ERROR__INVALID_SIDE = 0x177f; // 6015
 
 export type VaultError =
-  | typeof VAULT_ERROR__INVALID_AMOUNT
-  | typeof VAULT_ERROR__VAULT_ALREADY_EXISTS;
+  | typeof VAULT_ERROR__ALREADY_CLOSED
+  | typeof VAULT_ERROR__CHALLENGE_ACTIVE
+  | typeof VAULT_ERROR__DUPLICATE_PARTICIPANT
+  | typeof VAULT_ERROR__INVALID_MENU_INDEX
+  | typeof VAULT_ERROR__INVALID_MENU_PRICE
+  | typeof VAULT_ERROR__INVALID_ROUND
+  | typeof VAULT_ERROR__INVALID_SIDE
+  | typeof VAULT_ERROR__INVALID_TOPIC
+  | typeof VAULT_ERROR__MAX_TIPPERS_REACHED
+  | typeof VAULT_ERROR__OVERFLOW
+  | typeof VAULT_ERROR__ROUND_NOT_COMPLETE
+  | typeof VAULT_ERROR__TARGET_NOT_REACHED
+  | typeof VAULT_ERROR__TOO_EARLY
+  | typeof VAULT_ERROR__TOURNAMENT_FULL
+  | typeof VAULT_ERROR__TOURNAMENT_NOT_ACTIVE
+  | typeof VAULT_ERROR__UNAUTHORIZED;
 
 let vaultErrorMessages: Record<VaultError, string> | undefined;
 if (process.env.NODE_ENV !== "production") {
   vaultErrorMessages = {
-    [VAULT_ERROR__INVALID_AMOUNT]: `Invalid amount`,
-    [VAULT_ERROR__VAULT_ALREADY_EXISTS]: `Vault already exists`,
+    [VAULT_ERROR__ALREADY_CLOSED]: `Already closed`,
+    [VAULT_ERROR__CHALLENGE_ACTIVE]: `Challenge is still active`,
+    [VAULT_ERROR__DUPLICATE_PARTICIPANT]: `Duplicate participant`,
+    [VAULT_ERROR__INVALID_MENU_INDEX]: `Invalid menu index`,
+    [VAULT_ERROR__INVALID_MENU_PRICE]: `Tip amount does not match menu price`,
+    [VAULT_ERROR__INVALID_ROUND]: `Invalid round`,
+    [VAULT_ERROR__INVALID_SIDE]: `Invalid creator side (0 or 1)`,
+    [VAULT_ERROR__INVALID_TOPIC]: `Invalid topic`,
+    [VAULT_ERROR__MAX_TIPPERS_REACHED]: `Maximum tippers reached`,
+    [VAULT_ERROR__OVERFLOW]: `Arithmetic overflow`,
+    [VAULT_ERROR__ROUND_NOT_COMPLETE]: `Round not complete`,
+    [VAULT_ERROR__TARGET_NOT_REACHED]: `Target not reached`,
+    [VAULT_ERROR__TOO_EARLY]: `Time extension not yet elapsed`,
+    [VAULT_ERROR__TOURNAMENT_FULL]: `Tournament full`,
+    [VAULT_ERROR__TOURNAMENT_NOT_ACTIVE]: `Tournament not active`,
+    [VAULT_ERROR__UNAUTHORIZED]: `Unauthorized`,
   };
 }
 

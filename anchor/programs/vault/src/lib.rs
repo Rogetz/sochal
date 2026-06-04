@@ -2,8 +2,6 @@ use anchor_lang::prelude::*;
 use anchor_lang::system_program::{transfer, Transfer};
 
 
-use anchor_lang::prelude::*;
-
 declare_id!("DtkhpMSR9ZXjZCiGurAVFSMANJ9cAEQAxWdgczvCdLSB");
 
 // ---------------------------------------------------------------------------
@@ -19,7 +17,7 @@ const PLATFORM_FEE_BPS: u64 = 1000;
 const LIVE_TARGET: u64 = LAMPORTS_PER_SOL; // 1 SOL
 
 // Time extensions (seconds)
-const LIVE_EXTENSION: i64 = 900;       // 15 minutes
+const LIVE_EXTENSION: i64 = 1800;      // 30 minutes
 const CHALLENGE_EXTENSION: i64 = 900;  // 15 minutes
 const FINAL_EXTENSION: i64 = 1800;     // 30 minutes
 
@@ -36,9 +34,12 @@ const CHALLENGE_TARGETS: [u64; MAX_ROUNDS as usize] = [
 ];
 
 // Maximum tracking limits
-const MAX_TIPPERS: usize = 500;
+const MAX_TIPPERS: usize = 64;
 const MAX_MENU_ITEMS: usize = 20;
 const MAX_ITEM_NAME_LEN: usize = 20;
+const MENU_ITEM_SPACE: usize = MAX_ITEM_NAME_LEN + 1 + 8;
+const TIP_RECORD_SPACE: usize = 32 + 8;
+const CHALLENGE_TIP_SPACE: usize = 32 + 8 + 8;
 
 // ---------------------------------------------------------------------------
 // Error codes
@@ -140,24 +141,25 @@ pub struct Live {
     pub closed: bool,
     pub menu_items: [MenuItem; MAX_MENU_ITEMS],
     pub menu_count: u8,
-    pub fan_tips: [TipRecord; MAX_TIPPERS],
+    pub fan_tips: Vec<TipRecord>,
     pub fan_count: u32,
     pub bump: u8,
 }
 
 impl Live {
-    pub const SPACE: usize = 8 + // discriminator
-        8 + // live_id
-        32 + // creator
-        4 + 32 + // topic (max 32 chars)
-        8 + // total_tips
-        32 + // top_tipper
-        8 + // top_tipper_amount
-        1 + 8 + // target_reached_at (Option)
-        1 + // closed
-        (MAX_MENU_ITEMS * (MAX_ITEM_NAME_LEN + 1 + 8)) + 1 + // menu_items + menu_count
-        (MAX_TIPPERS * (32 + 8)) + 4 + // fan_tips + fan_count
-        1; // bump
+    pub const SPACE: usize = 8  // discriminator
+        + 8  // live_id
+        + 32 // creator
+        + 4 + 32 // topic string prefix + max bytes
+        + 8  // total_tips
+        + 32 // top_tipper
+        + 8  // top_tipper_amount
+        + 1 + 8 // target_reached_at (Option<i64>)
+        + 1  // closed
+        + (MAX_MENU_ITEMS * MENU_ITEM_SPACE) + 1 // menu_items + menu_count
+        + 4 + (MAX_TIPPERS * TIP_RECORD_SPACE) // fan_tips vec prefix + payload
+        + 4  // fan_count
+        + 1; // bump
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
@@ -179,12 +181,12 @@ pub struct TournamentGroup {
 }
 
 impl TournamentGroup {
-    pub const SPACE: usize = 8 +
-        4 + 32 + // topic (String)
-        1 + 1 + // status enum + current_round
-        (32 * MAX_PARTICIPANTS) + 1 + // participants array + count
-        (32 * 16) + // round_winners (max 16)
-        1; // bump
+    pub const SPACE: usize = 8  // discriminator
+        + 4 + 32 // topic string prefix + max bytes
+        + 1 + 1 // status enum + current_round
+        + (32 * MAX_PARTICIPANTS) + 1 // participants array + count
+        + (32 * 16) // round_winners (max 16)
+        + 1; // bump
 }
 
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, PartialEq, Eq)]
@@ -226,25 +228,26 @@ pub struct Challenge {
     pub top_tipper_amount: u64,
     pub target_reached_at: Option<i64>,
     pub winner: Option<Pubkey>,
-    pub fan_tips: [ChallengeTip; MAX_TIPPERS],
+    pub fan_tips: Vec<ChallengeTip>,
     pub fan_count: u32,
     pub bump: u8,
 }
 
 impl Challenge {
-    pub const SPACE: usize = 8 +
-        32 + // tournament_group
-        1 + 1 + // round, pair_index
-        32 + 32 + // creator_a, creator_b
-        1 + 1 + // status enum (+ padding)
-        8 + // target_min
-        8 + 8 + // a_total, b_total
-        32 + // top_tipper
-        8 + // top_tipper_amount
-        1 + 8 + // target_reached_at (Option)
-        1 + 32 + // winner (Option)
-        (MAX_TIPPERS * (32 + 8 + 8)) + 4 + // fan_tips + fan_count
-        1; // bump
+    pub const SPACE: usize = 8  // discriminator
+        + 32 // tournament_group
+        + 1 + 1 // round, pair_index
+        + 32 + 32 // creator_a, creator_b
+        + 1 + 1 // status enum + compact flag space
+        + 8 // target_min
+        + 8 + 8 // a_total, b_total
+        + 32 // top_tipper
+        + 8 // top_tipper_amount
+        + 1 + 8 // target_reached_at (Option<i64>)
+        + 1 + 32 // winner (Option<Pubkey>)
+        + 4 + (MAX_TIPPERS * CHALLENGE_TIP_SPACE) // fan_tips vec prefix + payload
+        + 4 // fan_count
+        + 1; // bump
 }
 
 // ---------------------------------------------------------------------------
@@ -283,14 +286,13 @@ pub mod vault {
         let live = &mut ctx.accounts.live;
         let live_id = global.live_counter;
 
-        let mut menu_fixed = [MenuItem::default(); MAX_MENU_ITEMS];
         for (i, item) in menu_items.iter().enumerate() {
             require!(i < MAX_MENU_ITEMS, ErrorCode::InvalidMenuIndex);
             require!(
                 item.name_len as usize <= MAX_ITEM_NAME_LEN,
                 ErrorCode::InvalidMenuIndex
             );
-            menu_fixed[i] = item.clone();
+            live.menu_items[i] = item.clone();
         }
 
         live.live_id = live_id;
@@ -301,9 +303,8 @@ pub mod vault {
         live.top_tipper_amount = 0;
         live.target_reached_at = None;
         live.closed = false;
-        live.menu_items = menu_fixed;
         live.menu_count = menu_items.len() as u8;
-        live.fan_tips = [TipRecord::default(); MAX_TIPPERS];
+        live.fan_tips = Vec::new();
         live.fan_count = 0;
         live.bump = ctx.bumps.live;
 
@@ -343,30 +344,26 @@ pub mod vault {
         let fan_key = ctx.accounts.fan.key();
         let mut found = false;
         let mut fan_total = amount;
-        for i in 0..(live.fan_count as usize) {
-            if live.fan_tips[i].fan == fan_key {
-                let updated = live.fan_tips[i]
-                    .amount
-                    .checked_add(amount)
-                    .ok_or(ErrorCode::Overflow)?;
-                live.fan_tips[i].amount = updated;
+        for tip in live.fan_tips.iter_mut() {
+            if tip.fan == fan_key {
+                let updated = tip.amount.checked_add(amount).ok_or(ErrorCode::Overflow)?;
+                tip.amount = updated;
                 fan_total = updated;
                 found = true;
                 break;
             }
         }
         if !found {
-            let fan_count = live.fan_count;
-            require!((fan_count as usize) < MAX_TIPPERS, ErrorCode::MaxTippersReached);
-            live.fan_tips[fan_count as usize] = TipRecord {
+            require!(live.fan_tips.len() < MAX_TIPPERS, ErrorCode::MaxTippersReached);
+            live.fan_tips.push(TipRecord {
                 fan: fan_key,
                 amount,
-            };
-            live.fan_count = live.fan_count.checked_add(1).ok_or(ErrorCode::Overflow)?;
+            });
+            live.fan_count = live.fan_tips.len() as u32;
             fan_total = amount;
         }
 
-        // Update top tipper
+        // Update top tipper only when the new tip total is strictly greater
         if fan_total > live.top_tipper_amount {
             live.top_tipper = fan_key;
             live.top_tipper_amount = fan_total;
@@ -384,22 +381,38 @@ pub mod vault {
     }
 
     /// Closes a live stream and distributes rewards.
-    pub fn close_live(ctx: Context<CloseLive>) -> Result<()> {
+    pub fn close_live(ctx: Context<CloseLive>, force: bool) -> Result<()> {
         let live = &mut ctx.accounts.live;
         let clock = Clock::get()?;
 
         require!(!live.closed, ErrorCode::AlreadyClosed);
         require!(live.target_reached_at.is_some(), ErrorCode::TargetNotReached);
+        if force {
+            require!(ctx.accounts.creator.is_signer, ErrorCode::Unauthorized);
+        }
         require!(
-            clock.unix_timestamp >= live.target_reached_at.unwrap().checked_add(LIVE_EXTENSION).unwrap(),
+            force || clock.unix_timestamp >= live.target_reached_at.unwrap().checked_add(LIVE_EXTENSION).unwrap(),
             ErrorCode::TooEarly
         );
+        // Use recorded total tips (avoid relying on raw PDA lamports which include rent)
+        let total = live.total_tips;
 
-        let total = live.to_account_info().lamports();
-
-        let creator_share = total.checked_mul(85).ok_or(ErrorCode::Overflow)?.checked_div(100).unwrap();
-        let top_tipper_share = total.checked_mul(5).ok_or(ErrorCode::Overflow)?.checked_div(100).unwrap();
-        let fee = total.checked_mul(10).ok_or(ErrorCode::Overflow)?.checked_div(100).unwrap();
+        // 85% to creator, 5% to top tipper, 10% to admin (validated via `global.admin`)
+        let creator_share = total
+            .checked_mul(85)
+            .ok_or(ErrorCode::Overflow)?
+            .checked_div(100)
+            .ok_or(ErrorCode::Overflow)?;
+        let top_tipper_share = total
+            .checked_mul(5)
+            .ok_or(ErrorCode::Overflow)?
+            .checked_div(100)
+            .ok_or(ErrorCode::Overflow)?;
+        let admin_share = total
+            .checked_sub(creator_share)
+            .ok_or(ErrorCode::Overflow)?
+            .checked_sub(top_tipper_share)
+            .ok_or(ErrorCode::Overflow)?;
 
         // Transfer to creator
         **live.to_account_info().try_borrow_mut_lamports()? -= creator_share;
@@ -411,10 +424,11 @@ pub mod vault {
             **ctx.accounts.top_tipper.to_account_info().try_borrow_mut_lamports()? += top_tipper_share;
         }
 
-        // Fee to treasury
-        **live.to_account_info().try_borrow_mut_lamports()? -= fee;
-        **ctx.accounts.treasury.to_account_info().try_borrow_mut_lamports()? += fee;
-
+        // Remaining fee to admin recipient
+        if admin_share > 0 {
+            **live.to_account_info().try_borrow_mut_lamports()? -= admin_share;
+            **ctx.accounts.admin_recipient.to_account_info().try_borrow_mut_lamports()? += admin_share;
+        }
         live.closed = true;
         Ok(())
     }
@@ -468,7 +482,7 @@ pub mod vault {
         challenge.top_tipper_amount = 0;
         challenge.target_reached_at = None;
         challenge.winner = None;
-        challenge.fan_tips = [ChallengeTip::default(); MAX_TIPPERS];
+        challenge.fan_tips = Vec::new();
         challenge.fan_count = 0;
         challenge.bump = ctx.bumps.challenge;
 
@@ -499,28 +513,24 @@ pub mod vault {
         let fan_key = ctx.accounts.fan.key();
         let mut found = false;
         let mut fan_total = amount;
-        for i in 0..(challenge.fan_count as usize) {
-            if challenge.fan_tips[i].fan == fan_key {
-                let mut a_tip = challenge.fan_tips[i].a_tip;
-                let mut b_tip = challenge.fan_tips[i].b_tip;
+        for tip in challenge.fan_tips.iter_mut() {
+            if tip.fan == fan_key {
+                let mut a_tip = tip.a_tip;
+                let mut b_tip = tip.b_tip;
                 if creator_side == 0 {
                     a_tip = a_tip.checked_add(amount).ok_or(ErrorCode::Overflow)?;
                 } else {
                     b_tip = b_tip.checked_add(amount).ok_or(ErrorCode::Overflow)?;
                 }
-                challenge.fan_tips[i].a_tip = a_tip;
-                challenge.fan_tips[i].b_tip = b_tip;
+                tip.a_tip = a_tip;
+                tip.b_tip = b_tip;
                 fan_total = a_tip.checked_add(b_tip).ok_or(ErrorCode::Overflow)?;
                 found = true;
                 break;
             }
         }
         if !found {
-            let fan_count = challenge.fan_count;
-            require!(
-                (fan_count as usize) < MAX_TIPPERS,
-                ErrorCode::MaxTippersReached
-            );
+            require!(challenge.fan_tips.len() < MAX_TIPPERS, ErrorCode::MaxTippersReached);
             let mut tip = ChallengeTip::default();
             tip.fan = fan_key;
             if creator_side == 0 {
@@ -528,8 +538,8 @@ pub mod vault {
             } else {
                 tip.b_tip = amount;
             }
-            challenge.fan_tips[fan_count as usize] = tip;
-            challenge.fan_count = challenge.fan_count.checked_add(1).ok_or(ErrorCode::Overflow)?;
+            challenge.fan_tips.push(tip);
+            challenge.fan_count = challenge.fan_tips.len() as u32;
             fan_total = amount;
         }
 
@@ -745,7 +755,7 @@ pub struct CreateLive<'info> {
         ],
         bump
     )]
-    pub live: Account<'info, Live>,
+    pub live: Box<Account<'info, Live>>,
     pub system_program: Program<'info, System>,
 }
 
@@ -758,7 +768,7 @@ pub struct TipLive<'info> {
         seeds = [LIVE_SEED, &live.live_id.to_le_bytes()],
         bump = live.bump,
     )]
-    pub live: Account<'info, Live>,
+    pub live: Box<Account<'info, Live>>,
     pub system_program: Program<'info, System>,
 }
 
@@ -769,20 +779,22 @@ pub struct CloseLive<'info> {
         seeds = [LIVE_SEED, &live.live_id.to_le_bytes()],
         bump = live.bump,
     )]
-    pub live: Account<'info, Live>,
+    pub live: Box<Account<'info, Live>>,
     /// CHECK: creator account, validated by live.creator
     #[account(mut, address = live.creator)]
     pub creator: AccountInfo<'info>,
     /// CHECK: top tipper account, validated by live.top_tipper
     #[account(mut, address = live.top_tipper)]
     pub top_tipper: AccountInfo<'info>,
-    /// CHECK: treasury PDA
+    /// Global state (contains admin pubkey)
     #[account(
-        mut,
-        seeds = [TREASURY_SEED],
-        bump,
+        seeds = [GLOBAL_SEED],
+        bump = global.bump,
     )]
-    pub treasury: AccountInfo<'info>,
+    pub global: Account<'info, GlobalState>,
+    /// CHECK: validated against global.admin
+    #[account(mut, address = global.admin)]
+    pub admin_recipient: AccountInfo<'info>,
     pub system_program: Program<'info, System>,
 }
 
@@ -794,7 +806,7 @@ pub struct EnterChallenge<'info> {
         seeds = [LIVE_SEED, &live.live_id.to_le_bytes()],
         bump = live.bump,
     )]
-    pub live: Account<'info, Live>,
+    pub live: Box<Account<'info, Live>>,
     #[account(
         init_if_needed,
         payer = creator,
@@ -828,7 +840,7 @@ pub struct CreateChallenge<'info> {
         ],
         bump
     )]
-    pub challenge: Account<'info, Challenge>,
+    pub challenge: Box<Account<'info, Challenge>>,
     pub system_program: Program<'info, System>,
 }
 
@@ -846,7 +858,7 @@ pub struct TipChallenge<'info> {
         ],
         bump = challenge.bump,
     )]
-    pub challenge: Account<'info, Challenge>,
+    pub challenge: Box<Account<'info, Challenge>>,
     pub system_program: Program<'info, System>,
 }
 
@@ -862,13 +874,13 @@ pub struct CloseChallenge<'info> {
         ],
         bump = challenge.bump,
     )]
-    pub challenge: Account<'info, Challenge>,
+    pub challenge: Box<Account<'info, Challenge>>,
     #[account(
         mut,
         seeds = [TOURNAMENT_SEED, tournament_group.topic.as_bytes()],
         bump = tournament_group.bump,
     )]
-    pub tournament_group: Account<'info, TournamentGroup>,
+    pub tournament_group: Box<Account<'info, TournamentGroup>>,
     /// CHECK: validated against challenge.winner
     #[account(mut)]
     pub winner: AccountInfo<'info>,

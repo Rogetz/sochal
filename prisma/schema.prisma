@@ -1,0 +1,184 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+
+enum ContributionScope {
+  LIVE
+  CHALLENGE
+}
+
+enum LiveStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum ChallengeStatus {
+  DRAFT
+  WAITING
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ChallengeStage {
+  ROUND_OF_32
+  ROUND_OF_30
+  ROUND_OF_28
+  ROUND_OF_26
+  ROUND_OF_24
+}
+
+enum ChallengeCreatorStatus {
+  PENDING
+  QUALIFIED
+  ELIMINATED
+  DROPPED
+}
+
+enum BattleStatus {
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model User {
+  id            String   @id @default(cuid())
+  walletAddress  String   @unique
+  handle        String?
+  displayName   String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  createdChallenges Challenge[] @relation("ChallengeOwner")
+  liveStreams       Live[]
+  challengeEntries  ChallengeCreator[]
+  fanContributions  Contribution[] @relation("ContributionFan")
+}
+
+model Challenge {
+  id                    String          @id @default(cuid())
+  onChainAddress        String?         @unique
+  creatorWalletAddress  String
+  creator               User            @relation("ChallengeOwner", fields: [creatorWalletAddress], references: [walletAddress], onDelete: Restrict)
+  topic                 String
+  title                 String
+  description           String
+  targetMin             Decimal
+  status                ChallengeStatus @default(WAITING)
+  currentStage          ChallengeStage  @default(ROUND_OF_32)
+  maxCreators           Int             @default(32)
+  totalCollectedSol     Decimal         @default(0)
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  creators              ChallengeCreator[]
+  liveStreams           Live[]
+  contributions         Contribution[]
+  challengeBattles      ChallengeBattle[]
+
+  @@index([creatorWalletAddress])
+  @@index([topic])
+}
+
+model Live {
+  id                    String     @id @default(cuid())
+  streamId              String     @unique
+  channelName           String     @unique
+  onChainAddress        String?    @unique
+  ownerWalletAddress    String
+  owner                 User       @relation(fields: [ownerWalletAddress], references: [walletAddress], onDelete: Restrict)
+  challengeId           String?
+  challenge             Challenge? @relation(fields: [challengeId], references: [id], onDelete: SetNull)
+  topic                 String
+  title                 String
+  targetSol             Decimal    @default(0)
+  totalCollectedSol     Decimal    @default(0)
+  status                LiveStatus @default(ACTIVE)
+  startedAt             DateTime   @default(now())
+  endedAt               DateTime?
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+
+  contributions         Contribution[]
+  challengeCreator      ChallengeCreator? @relation("ChallengeCreatorLive")
+  battleAsCreatorA      ChallengeBattle?   @relation("BattleCreatorA")
+  battleAsCreatorB      ChallengeBattle?   @relation("BattleCreatorB")
+  battleWon             ChallengeBattle?   @relation("BattleWinner")
+
+  @@index([ownerWalletAddress])
+  @@index([challengeId])
+}
+
+model ChallengeCreator {
+  id                    String                 @id @default(cuid())
+  challengeId           String
+  challenge             Challenge              @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  creatorWalletAddress  String
+  creator               User                   @relation(fields: [creatorWalletAddress], references: [walletAddress], onDelete: Restrict)
+  liveStreamId          String?                @unique
+  live                  Live?                  @relation("ChallengeCreatorLive", fields: [liveStreamId], references: [streamId], onDelete: SetNull)
+  status                ChallengeCreatorStatus @default(PENDING)
+  stage                 ChallengeStage         @default(ROUND_OF_32)
+  totalRaisedSol        Decimal                @default(0)
+  joinedAt              DateTime               @default(now())
+  qualifiedAt           DateTime?
+  eliminatedAt          DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  contributions         Contribution[]
+
+  @@unique([challengeId, creatorWalletAddress])
+  @@index([challengeId, status])
+}
+
+model Contribution {
+  id                    String              @id @default(cuid())
+  txSignature           String              @unique
+  scope                 ContributionScope
+  fanWalletAddress      String
+  fan                   User                @relation("ContributionFan", fields: [fanWalletAddress], references: [walletAddress], onDelete: Restrict)
+  amountSol             Decimal
+  blockTime             Int?
+  liveId                String?
+  live                  Live?               @relation(fields: [liveId], references: [id], onDelete: SetNull)
+  challengeId           String?
+  challenge             Challenge?          @relation(fields: [challengeId], references: [id], onDelete: SetNull)
+  challengeCreatorId     String?
+  challengeCreator      ChallengeCreator?   @relation(fields: [challengeCreatorId], references: [id], onDelete: SetNull)
+  createdAt             DateTime            @default(now())
+
+  @@index([scope, fanWalletAddress])
+  @@index([liveId])
+  @@index([challengeId])
+}
+
+model ChallengeBattle {
+  id              String        @id @default(cuid())
+  challengeId     String
+  challenge       Challenge     @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  creatorALiveId  String        @unique
+  creatorA        Live          @relation("BattleCreatorA", fields: [creatorALiveId], references: [id], onDelete: Restrict)
+  creatorBLiveId   String        @unique
+  creatorB        Live          @relation("BattleCreatorB", fields: [creatorBLiveId], references: [id], onDelete: Restrict)
+  status          BattleStatus  @default(ACTIVE)
+  pairedAt        DateTime      @default(now())
+  endedAt         DateTime?
+  winnerLiveId    String?       @unique
+  winnerLive      Live?         @relation("BattleWinner", fields: [winnerLiveId], references: [id], onDelete: SetNull)
+
+  @@index([challengeId, status])
+  @@index([creatorALiveId, creatorBLiveId])
+}

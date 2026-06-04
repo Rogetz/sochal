@@ -1,270 +1,177 @@
 "use client";
 
-import { useState } from "react";
-import { lamports as sol } from "@solana/kit";
-import { toast } from "sonner";
-import { useWallet } from "./lib/wallet/context";
-import { useBalance } from "./lib/hooks/use-balance";
-import { lamportsToSolString } from "./lib/lamports";
-import { useSolanaClient } from "./lib/solana-client-context";
-import { ellipsify } from "./lib/explorer";
-import { VaultCard } from "./components/vault-card";
-import { GridBackground } from "./components/grid-background";
-import { ThemeToggle } from "./components/theme-toggle";
-import { ClusterSelect } from "./components/cluster-select";
-import { WalletButton } from "./components/wallet-button";
-import { useCluster } from "./components/cluster-context";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { useSochal, sochal } from "@/lib/sochal-store";
+import { WalletButton } from "@/components/sochal/WalletButton";
+import { Mic, Users, Zap, Trophy, ArrowRight, Sparkles } from "lucide-react";
 
-export default function Home() {
-  const { wallet, status } = useWallet();
-  const { cluster, getExplorerUrl } = useCluster();
-  const client = useSolanaClient();
+export default function LandingPage() {
+  const { wallet, role } = useSochal();
+  const router = useRouter();
 
-  const address = wallet?.account.address;
-  const balance = useBalance(address);
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = async () => {
-    if (!address) return;
-    await navigator.clipboard.writeText(address);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleAirdrop = async () => {
-    if (!address) return;
-    try {
-      toast.info("Requesting airdrop...");
-      const sig = await client.airdrop(address, sol(1_000_000_000n));
-      toast.success("Airdrop received!", {
-        description: sig ? (
-          <a
-            href={getExplorerUrl(`/tx/${sig}`)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
-          >
-            View transaction
-          </a>
-        ) : undefined,
-      });
-    } catch (err) {
-      console.error("Airdrop failed:", err);
-      const msg = err instanceof Error ? err.message : String(err);
-      const isRateLimited =
-        msg.includes("429") || msg.includes("Internal JSON-RPC error");
-      toast.error(
-        isRateLimited
-          ? "Devnet faucet rate-limited. Use the web faucet instead."
-          : "Airdrop failed. Try again later.",
-        isRateLimited
-          ? {
-              description: (
-                <a
-                  href="https://faucet.solana.com/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  Open faucet.solana.com
-                </a>
-              ),
-            }
-          : undefined
-      );
+  useEffect(() => {
+    if (wallet && role) {
+      router.push(role === "creator" ? "/creator" : "/fan");
     }
+  }, [wallet, role, router]);
+
+  return (
+    <main>
+      <section className="relative overflow-hidden">
+        <div className="mx-auto max-w-6xl px-4 md:px-8 pt-16 md:pt-28 pb-20 relative">
+          <div className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary mb-6">
+            <Sparkles className="size-3" /> Built on Solana · 400ms finality
+          </div>
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight leading-[1.05]">
+            Live battles where <br />
+            <span className="text-gradient">talent earns instantly.</span>
+          </h1>
+          <p className="mt-6 max-w-2xl text-lg text-muted-foreground">
+            Sochal is a Solana dApp for skill-based, bracketed live challenges. Fans tip in real time,
+            creators are matched by earnings, and every pot pays out on-chain — the second it ends.
+          </p>
+
+          <div className="mt-8 flex flex-wrap items-center gap-3">
+            {!wallet ? (
+              <WalletButton />
+            ) : (
+              <Link href={role === "creator" ? "/creator" : role === "fan" ? "/fan" : "/"}>
+                <Button className="bg-gradient-primary shadow-glow font-semibold">
+                  Enter app <ArrowRight className="size-4" />
+                </Button>
+              </Link>
+            )}
+            <Link href="/explore">
+              <Button variant="outline" className="border-border bg-surface/50">
+                Explore live <ArrowRight className="size-4" />
+              </Button>
+            </Link>
+          </div>
+
+          <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { k: "85%", v: "to creator" },
+              { k: "5%", v: "top tipper cut" },
+              { k: "0.01", v: "SOL min entry" },
+              { k: "<400ms", v: "settlement" },
+            ].map((s) => (
+              <div key={s.v} className="rounded-2xl border border-border bg-card/60 backdrop-blur p-4 hover:border-primary/40 transition">
+                <div className="text-2xl md:text-3xl font-bold text-gradient">{s.k}</div>
+                <div className="text-xs text-muted-foreground mt-1">{s.v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 md:px-8 pb-24">
+        <div className="text-center mb-10">
+          <h2 className="text-3xl md:text-4xl font-bold">Pick your side of the stage</h2>
+          <p className="text-muted-foreground mt-2">Connect a wallet, then choose how you play.</p>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-5">
+          <RoleCard
+            kind="creator"
+            icon={<Mic className="size-6" />}
+            title="I'm a Creator"
+            blurb="Go live, set your tip menu, climb the bracket. Win the title pool — paid atomically on-chain."
+            features={["Go-Live studio", "Tip menu builder", "Bracket dashboard", "Instant SOL payouts"]}
+          />
+          <RoleCard
+            kind="fan"
+            icon={<Users className="size-6" />}
+            title="I'm a Fan"
+            blurb="Scroll live reels, tip your favorite, become top fan and earn 5% of every pot you back."
+            features={["Live reel feed", "0.01 SOL entry", "Top-tipper rewards", "Live tip menu"]}
+          />
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-6xl px-4 md:px-8 pb-24">
+        <h2 className="text-3xl md:text-4xl font-bold text-center mb-10">Three stages. One title.</h2>
+        <div className="grid md:grid-cols-3 gap-5">
+          {[
+            { icon: <Zap className="size-5" />, n: "01", t: "Live Stage", b: "Hit the dynamic SOL target. 85/5/10 split, instant. Overtime extends 15 min." },
+            { icon: <Users className="size-5" />, n: "02", t: "Bracket", b: "Earnings-based matchmaking pairs you with the closest creator. 16 pairs, single elim." },
+            { icon: <Trophy className="size-5" />, n: "03", t: "Title Finale", b: "Final pair clears 100+ SOL. Winner takes 70% of the rolled pool. Atomic payout." },
+          ].map((s) => (
+            <div key={s.n} className="relative rounded-2xl border border-border bg-gradient-surface p-6 hover:border-primary/40 transition group">
+              <div className="text-xs font-mono text-primary/70 mb-3">{s.n}</div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="size-9 grid place-items-center rounded-lg bg-primary/15 text-primary group-hover:shadow-glow transition">
+                  {s.icon}
+                </div>
+                <div className="font-semibold text-lg">{s.t}</div>
+              </div>
+              <p className="text-sm text-muted-foreground">{s.b}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <footer className="border-t border-border/60 py-8 text-center text-xs text-muted-foreground">
+        © 2026 Sochal. All rights reserved.
+      </footer>
+    </main>
+  );
+}
+
+function RoleCard({
+  kind,
+  icon,
+  title,
+  blurb,
+  features,
+}: {
+  kind: "creator" | "fan";
+  icon: React.ReactNode;
+  title: string;
+  blurb: string;
+  features: string[];
+}) {
+  const { wallet } = useSochal();
+  const router = useRouter();
+
+  const choose = async () => {
+    if (!wallet) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
+    sochal.setRole(kind);
+    router.push(kind === "creator" ? "/creator" : "/fan");
   };
 
   return (
-    <div className="relative min-h-screen bg-background text-foreground">
-      <GridBackground />
+    <div className="group relative rounded-3xl border border-border bg-gradient-surface p-6 md:p-8 hover:border-primary/50 transition overflow-hidden">
+      <div className="absolute -top-20 -right-20 size-60 rounded-full bg-primary/10 blur-3xl group-hover:bg-primary/20 transition" />
+      <div className="relative">
+        <div className="size-12 grid place-items-center rounded-xl bg-primary/15 text-primary shadow-glow">
+          {icon}
+        </div>
+        <h3 className="mt-4 text-2xl font-bold">{title}</h3>
+        <p className="mt-2 text-muted-foreground">{blurb}</p>
 
-      <div className="relative z-10">
-        {/* Header */}
-        <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <span className="text-sm font-semibold tracking-tight">
-            Solana Starter Kit
-          </span>
-          <div className="flex items-center gap-3">
-            <ThemeToggle />
-            <ClusterSelect />
-            <WalletButton />
-          </div>
-        </header>
+        <ul className="mt-5 grid grid-cols-2 gap-2">
+          {features.map((f) => (
+            <li key={f} className="flex items-center gap-2 text-sm">
+              <span className="size-1.5 rounded-full bg-primary" />
+              {f}
+            </li>
+          ))}
+        </ul>
 
-        <main className="mx-auto max-w-6xl px-6">
-          {/* Hero */}
-          <section className="pt-6 pb-20 md:pt-8 md:pb-32">
-            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h1 className="font-black tracking-tight text-foreground">
-                  <span className="block text-6xl md:text-7xl">Anchor</span>
-                  <span className="block text-7xl md:text-8xl">Vault</span>
-                </h1>
-              </div>
-
-              <div className="flex max-w-2xl flex-col gap-3">
-                <p className="text-base leading-relaxed text-foreground/50">
-                  This program creates a personal vault for each user using a
-                  Program Derived Address (PDA). Connect your wallet, deposit
-                  SOL into your vault, and withdraw it anytime. Only you can
-                  access your funds.
-                </p>
-                <p className="text-sm leading-relaxed text-foreground/40">
-                  The vault is an{" "}
-                  <a
-                    href="https://www.anchor-lang.com/docs/introduction"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline underline-offset-2"
-                  >
-                    Anchor
-                  </a>{" "}
-                  program you can deploy to localnet or devnet and modify
-                  yourself. Check the README for setup instructions.
-                </p>
-                <div className="flex flex-wrap gap-4">
-                  <a
-                    href="https://solana.com/docs"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sm font-medium text-foreground/70 underline underline-offset-4 transition-colors hover:text-foreground"
-                  >
-                    Solana docs
-                    <span aria-hidden="true">&rarr;</span>
-                  </a>
-                  <a
-                    href="https://www.anchor-lang.com/docs/introduction"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sm font-medium text-foreground/70 underline underline-offset-4 transition-colors hover:text-foreground"
-                  >
-                    Anchor docs
-                    <span aria-hidden="true">&rarr;</span>
-                  </a>
-                  <a
-                    href="https://faucet.solana.com/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sm font-medium text-foreground/70 underline underline-offset-4 transition-colors hover:text-foreground"
-                  >
-                    Faucet
-                    <span aria-hidden="true">&rarr;</span>
-                  </a>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Template content */}
-          <div className="space-y-10 pb-20">
-            {/* Wallet Balance */}
-            {status === "connected" && address && (
-              <section className="relative w-full overflow-hidden rounded-2xl border border-border-low bg-card px-5 py-5">
-                <div
-                  className="pointer-events-none absolute inset-0 opacity-100 dark:opacity-0"
-                  aria-hidden="true"
-                  style={{
-                    backgroundImage: `
-                      linear-gradient(to right, rgba(0,0,0,0.06) 1px, transparent 1px),
-                      linear-gradient(to bottom, rgba(0,0,0,0.06) 1px, transparent 1px)
-                    `,
-                    backgroundSize: "24px 24px",
-                    mask: "radial-gradient(ellipse 80% 80% at 50% 0%, black, transparent)",
-                    WebkitMask:
-                      "radial-gradient(ellipse 80% 80% at 50% 0%, black, transparent)",
-                  }}
-                />
-                <div
-                  className="pointer-events-none absolute inset-0 opacity-0 dark:opacity-100"
-                  aria-hidden="true"
-                  style={{
-                    backgroundImage: `
-                      linear-gradient(to right, rgba(255,255,255,0.06) 1px, transparent 1px),
-                      linear-gradient(to bottom, rgba(255,255,255,0.06) 1px, transparent 1px)
-                    `,
-                    backgroundSize: "24px 24px",
-                    mask: "radial-gradient(ellipse 80% 80% at 50% 0%, black, transparent)",
-                    WebkitMask:
-                      "radial-gradient(ellipse 80% 80% at 50% 0%, black, transparent)",
-                  }}
-                />
-                <div className="relative flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cream">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="h-4 w-4 text-foreground/70"
-                      >
-                        <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
-                        <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
-                        <path d="M18 12a2 2 0 0 0 0 4h4v-4Z" />
-                      </svg>
-                    </div>
-                    <span className="text-sm font-medium">Wallet Balance</span>
-                    <button
-                      onClick={handleCopy}
-                      className="flex cursor-pointer items-center gap-1.5 font-mono text-xs text-muted transition hover:text-foreground"
-                    >
-                      {ellipsify(address, 4)}
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        className="h-3 w-3"
-                      >
-                        {copied ? (
-                          <path d="M20 6 9 17l-5-5" />
-                        ) : (
-                          <>
-                            <rect
-                              width="14"
-                              height="14"
-                              x="8"
-                              y="8"
-                              rx="2"
-                              ry="2"
-                            />
-                            <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                          </>
-                        )}
-                      </svg>
-                    </button>
-                  </div>
-                  {cluster !== "mainnet" && (
-                    <button
-                      onClick={handleAirdrop}
-                      className="cursor-pointer rounded-lg border border-border-low px-3 py-1.5 text-xs font-medium transition hover:bg-cream"
-                    >
-                      Airdrop
-                    </button>
-                  )}
-                </div>
-                <p className="relative mt-4 font-mono text-4xl font-bold tabular-nums tracking-tight">
-                  {balance.lamports != null
-                    ? lamportsToSolString(balance.lamports)
-                    : "\u2014"}
-                  <span className="ml-1.5 text-lg font-normal text-muted">
-                    SOL
-                  </span>
-                </p>
-              </section>
-            )}
-
-            {/* Vault Program Section */}
-            <VaultCard />
-          </div>
-        </main>
+        <Button
+          onClick={choose}
+          className="mt-6 w-full bg-gradient-primary shadow-glow font-semibold"
+          disabled={!wallet}
+        >
+          {wallet ? `Continue as ${kind}` : "Connect wallet first"}
+          <ArrowRight className="size-4" />
+        </Button>
       </div>
     </div>
   );

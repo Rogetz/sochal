@@ -6,5 +6,13 @@
  * @see https://github.com/codama-idl/codama
  */
 
-export * from "./deposit";
-export * from "./withdraw";
+export * from "./closeChallenge";
+export * from "./closeLive";
+export * from "./createChallenge";
+export * from "./createLive";
+export * from "./enterChallenge";
+export * from "./finalizeRound";
+export * from "./initialize";
+export * from "./tipChallenge";
+export * from "./tipLive";
+export * from "./withdrawTreasury";

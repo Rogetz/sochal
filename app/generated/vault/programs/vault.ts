@@ -17,18 +17,102 @@ import {
   type ReadonlyUint8Array,
 } from "@solana/kit";
 import {
-  parseDepositInstruction,
-  parseWithdrawInstruction,
-  type ParsedDepositInstruction,
-  type ParsedWithdrawInstruction,
+  parseCloseChallengeInstruction,
+  parseCloseLiveInstruction,
+  parseCreateChallengeInstruction,
+  parseCreateLiveInstruction,
+  parseEnterChallengeInstruction,
+  parseFinalizeRoundInstruction,
+  parseInitializeInstruction,
+  parseTipChallengeInstruction,
+  parseTipLiveInstruction,
+  parseWithdrawTreasuryInstruction,
+  type ParsedCloseChallengeInstruction,
+  type ParsedCloseLiveInstruction,
+  type ParsedCreateChallengeInstruction,
+  type ParsedCreateLiveInstruction,
+  type ParsedEnterChallengeInstruction,
+  type ParsedFinalizeRoundInstruction,
+  type ParsedInitializeInstruction,
+  type ParsedTipChallengeInstruction,
+  type ParsedTipLiveInstruction,
+  type ParsedWithdrawTreasuryInstruction,
 } from "../instructions";
 
 export const VAULT_PROGRAM_ADDRESS =
-  "DWKDyCzMmf6GUxspFDvWVqY4Q44F1hqm8b51jfEV49Yz" as Address<"DWKDyCzMmf6GUxspFDvWVqY4Q44F1hqm8b51jfEV49Yz">;
+  "DtkhpMSR9ZXjZCiGurAVFSMANJ9cAEQAxWdgczvCdLSB" as Address<"DtkhpMSR9ZXjZCiGurAVFSMANJ9cAEQAxWdgczvCdLSB">;
+
+export enum VaultAccount {
+  Challenge,
+  GlobalState,
+  Live,
+  TournamentGroup,
+}
+
+export function identifyVaultAccount(
+  account: { data: ReadonlyUint8Array } | ReadonlyUint8Array,
+): VaultAccount {
+  const data = "data" in account ? account.data : account;
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([119, 250, 161, 121, 119, 81, 22, 208]),
+      ),
+      0,
+    )
+  ) {
+    return VaultAccount.Challenge;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([163, 46, 74, 168, 216, 123, 133, 98]),
+      ),
+      0,
+    )
+  ) {
+    return VaultAccount.GlobalState;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([184, 155, 223, 245, 135, 54, 36, 181]),
+      ),
+      0,
+    )
+  ) {
+    return VaultAccount.Live;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([57, 186, 121, 220, 59, 190, 12, 111]),
+      ),
+      0,
+    )
+  ) {
+    return VaultAccount.TournamentGroup;
+  }
+  throw new Error(
+    "The provided account could not be identified as a vault account.",
+  );
+}
 
 export enum VaultInstruction {
-  Deposit,
-  Withdraw,
+  CloseChallenge,
+  CloseLive,
+  CreateChallenge,
+  CreateLive,
+  EnterChallenge,
+  FinalizeRound,
+  Initialize,
+  TipChallenge,
+  TipLive,
+  WithdrawTreasury,
 }
 
 export function identifyVaultInstruction(
@@ -39,23 +123,111 @@ export function identifyVaultInstruction(
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([242, 35, 198, 137, 82, 225, 242, 182]),
+        new Uint8Array([29, 156, 109, 17, 41, 99, 71, 236]),
       ),
       0,
     )
   ) {
-    return VaultInstruction.Deposit;
+    return VaultInstruction.CloseChallenge;
   }
   if (
     containsBytes(
       data,
       fixEncoderSize(getBytesEncoder(), 8).encode(
-        new Uint8Array([183, 18, 70, 156, 148, 109, 161, 34]),
+        new Uint8Array([239, 190, 181, 46, 81, 33, 33, 168]),
       ),
       0,
     )
   ) {
-    return VaultInstruction.Withdraw;
+    return VaultInstruction.CloseLive;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([170, 244, 47, 1, 1, 15, 173, 239]),
+      ),
+      0,
+    )
+  ) {
+    return VaultInstruction.CreateChallenge;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([222, 219, 61, 58, 183, 36, 101, 227]),
+      ),
+      0,
+    )
+  ) {
+    return VaultInstruction.CreateLive;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([143, 235, 100, 82, 43, 161, 15, 80]),
+      ),
+      0,
+    )
+  ) {
+    return VaultInstruction.EnterChallenge;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([239, 160, 254, 11, 254, 144, 53, 148]),
+      ),
+      0,
+    )
+  ) {
+    return VaultInstruction.FinalizeRound;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([175, 175, 109, 31, 13, 152, 155, 237]),
+      ),
+      0,
+    )
+  ) {
+    return VaultInstruction.Initialize;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([246, 203, 40, 27, 148, 250, 158, 36]),
+      ),
+      0,
+    )
+  ) {
+    return VaultInstruction.TipChallenge;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([136, 165, 185, 13, 138, 97, 76, 39]),
+      ),
+      0,
+    )
+  ) {
+    return VaultInstruction.TipLive;
+  }
+  if (
+    containsBytes(
+      data,
+      fixEncoderSize(getBytesEncoder(), 8).encode(
+        new Uint8Array([40, 63, 122, 158, 144, 216, 83, 96]),
+      ),
+      0,
+    )
+  ) {
+    return VaultInstruction.WithdrawTreasury;
   }
   throw new Error(
     "The provided instruction could not be identified as a vault instruction.",
@@ -63,32 +235,112 @@ export function identifyVaultInstruction(
 }
 
 export type ParsedVaultInstruction<
-  TProgram extends string = "DWKDyCzMmf6GUxspFDvWVqY4Q44F1hqm8b51jfEV49Yz",
+  TProgram extends string = "DtkhpMSR9ZXjZCiGurAVFSMANJ9cAEQAxWdgczvCdLSB",
 > =
   | ({
-      instructionType: VaultInstruction.Deposit;
-    } & ParsedDepositInstruction<TProgram>)
+      instructionType: VaultInstruction.CloseChallenge;
+    } & ParsedCloseChallengeInstruction<TProgram>)
   | ({
-      instructionType: VaultInstruction.Withdraw;
-    } & ParsedWithdrawInstruction<TProgram>);
+      instructionType: VaultInstruction.CloseLive;
+    } & ParsedCloseLiveInstruction<TProgram>)
+  | ({
+      instructionType: VaultInstruction.CreateChallenge;
+    } & ParsedCreateChallengeInstruction<TProgram>)
+  | ({
+      instructionType: VaultInstruction.CreateLive;
+    } & ParsedCreateLiveInstruction<TProgram>)
+  | ({
+      instructionType: VaultInstruction.EnterChallenge;
+    } & ParsedEnterChallengeInstruction<TProgram>)
+  | ({
+      instructionType: VaultInstruction.FinalizeRound;
+    } & ParsedFinalizeRoundInstruction<TProgram>)
+  | ({
+      instructionType: VaultInstruction.Initialize;
+    } & ParsedInitializeInstruction<TProgram>)
+  | ({
+      instructionType: VaultInstruction.TipChallenge;
+    } & ParsedTipChallengeInstruction<TProgram>)
+  | ({
+      instructionType: VaultInstruction.TipLive;
+    } & ParsedTipLiveInstruction<TProgram>)
+  | ({
+      instructionType: VaultInstruction.WithdrawTreasury;
+    } & ParsedWithdrawTreasuryInstruction<TProgram>);
 
 export function parseVaultInstruction<TProgram extends string>(
   instruction: Instruction<TProgram> & InstructionWithData<ReadonlyUint8Array>,
 ): ParsedVaultInstruction<TProgram> {
   const instructionType = identifyVaultInstruction(instruction);
   switch (instructionType) {
-    case VaultInstruction.Deposit: {
+    case VaultInstruction.CloseChallenge: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: VaultInstruction.Deposit,
-        ...parseDepositInstruction(instruction),
+        instructionType: VaultInstruction.CloseChallenge,
+        ...parseCloseChallengeInstruction(instruction),
       };
     }
-    case VaultInstruction.Withdraw: {
+    case VaultInstruction.CloseLive: {
       assertIsInstructionWithAccounts(instruction);
       return {
-        instructionType: VaultInstruction.Withdraw,
-        ...parseWithdrawInstruction(instruction),
+        instructionType: VaultInstruction.CloseLive,
+        ...parseCloseLiveInstruction(instruction),
+      };
+    }
+    case VaultInstruction.CreateChallenge: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: VaultInstruction.CreateChallenge,
+        ...parseCreateChallengeInstruction(instruction),
+      };
+    }
+    case VaultInstruction.CreateLive: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: VaultInstruction.CreateLive,
+        ...parseCreateLiveInstruction(instruction),
+      };
+    }
+    case VaultInstruction.EnterChallenge: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: VaultInstruction.EnterChallenge,
+        ...parseEnterChallengeInstruction(instruction),
+      };
+    }
+    case VaultInstruction.FinalizeRound: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: VaultInstruction.FinalizeRound,
+        ...parseFinalizeRoundInstruction(instruction),
+      };
+    }
+    case VaultInstruction.Initialize: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: VaultInstruction.Initialize,
+        ...parseInitializeInstruction(instruction),
+      };
+    }
+    case VaultInstruction.TipChallenge: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: VaultInstruction.TipChallenge,
+        ...parseTipChallengeInstruction(instruction),
+      };
+    }
+    case VaultInstruction.TipLive: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: VaultInstruction.TipLive,
+        ...parseTipLiveInstruction(instruction),
+      };
+    }
+    case VaultInstruction.WithdrawTreasury: {
+      assertIsInstructionWithAccounts(instruction);
+      return {
+        instructionType: VaultInstruction.WithdrawTreasury,
+        ...parseWithdrawTreasuryInstruction(instruction),
       };
     }
     default:
