@@ -9,6 +9,7 @@ import {
   getBase58Decoder,
   getBase58Encoder,
   getBytesEncoder,
+  getAddressEncoder,
   getMinimumBalanceForRentExemption,
   getProgramDerivedAddress,
   getTransactionDecoder,
@@ -42,6 +43,10 @@ import {
   getCreateLiveInstructionAsync,
   getCloseLiveInstruction,
   getTipLiveInstruction,
+  getCloseChallengeInstructionAsync,
+  getTipChallengeInstruction,
+  getCreateChallengeInstruction,
+  getEnterChallengeInstruction,
   type MenuItemArgs,
 } from "@/app/generated/vault";
 import { VAULT_PROGRAM_ADDRESS } from "@/app/generated/vault/programs";
@@ -50,6 +55,8 @@ import { sochal, type WalletStandardSession, type WalletProvider } from "@/lib/s
 type WalletStandardSessionNonNull = NonNullable<WalletStandardSession>;
 
 const LIVE_SEED_BYTES = new Uint8Array([108, 105, 118, 101]);
+const TOURNAMENT_SEED_BYTES = new Uint8Array([116, 111, 117, 114, 110, 97, 109, 101, 110, 116]);
+const CHALLENGE_SEED_BYTES = new Uint8Array([99, 104, 97, 108, 108, 101, 110, 103, 101]);
 const LIVE_ACCOUNT_SPACE = 20728n;
 
 const DEFAULT_RPC_URL = "https://api.devnet.solana.com";
@@ -249,6 +256,47 @@ async function deriveLiveAddress(
   return liveAddress;
 }
 
+async function deriveTournamentGroupAddress(
+  topic: string,
+  programAddress: Address = VAULT_PROGRAM_ADDRESS
+): Promise<Address> {
+  const [tournamentGroupAddress] = await getProgramDerivedAddress({
+    programAddress,
+    seeds: [
+      getBytesEncoder().encode(TOURNAMENT_SEED_BYTES),
+      new TextEncoder().encode(topic),
+    ],
+  });
+
+  return tournamentGroupAddress;
+}
+
+async function deriveChallengeAddress(
+  tournamentGroupAddress: string,
+  round: number,
+  pairIndex: number,
+  programAddress: Address = VAULT_PROGRAM_ADDRESS
+): Promise<Address> {
+  if (!Number.isInteger(round) || round < 0 || round > 255) {
+    throw new Error("round must be an integer between 0 and 255.");
+  }
+  if (!Number.isInteger(pairIndex) || pairIndex < 0 || pairIndex > 255) {
+    throw new Error("pairIndex must be an integer between 0 and 255.");
+  }
+
+  const [challengeAddress] = await getProgramDerivedAddress({
+    programAddress,
+    seeds: [
+      getBytesEncoder().encode(CHALLENGE_SEED_BYTES),
+      getAddressEncoder().encode(address(tournamentGroupAddress)),
+      new Uint8Array([round]),
+      new Uint8Array([pairIndex]),
+    ],
+  });
+
+  return challengeAddress;
+}
+
 async function sendInstruction(input: {
   signer: TransactionSendingSigner;
   instruction: Parameters<typeof appendTransactionMessageInstruction>[0];
@@ -340,10 +388,306 @@ export async function tipLiveOnChain(
   };
 }
 
+export interface CreateChallengeOnChainInput {
+  tournamentTopic: string;
+  round: number;
+  pairIndex: number;
+}
+
+export interface CreateChallengeOnChainResult {
+  createChallengeSignature: string;
+  tournamentGroupAddress: Address;
+  challengeAddress: Address;
+}
+
+export async function createChallengeOnChain(
+  input: CreateChallengeOnChainInput
+): Promise<CreateChallengeOnChainResult> {
+  let session = await sochal.getWalletStandardSession();
+
+  if (!session) {
+    console.warn("No wallet-standard session available, attempting reconnect fallback", { state: sochal.get() });
+
+    try {
+      const current = sochal.get().wallet;
+      if (current?.provider) {
+        await sochal.connect(current.provider as WalletProvider);
+        session = await sochal.getWalletStandardSession();
+      }
+    } catch (error) {
+      console.warn("Automatic wallet reconnect attempt failed:", error);
+    }
+
+    if (!session) {
+      throw new Error("Wallet-standard session unavailable. Please reconnect your wallet.");
+    }
+  }
+
+  if (!Number.isInteger(input.pairIndex) || input.pairIndex < 0 || input.pairIndex > 255) {
+    throw new Error("pairIndex must be an integer between 0 and 255.");
+  }
+
+  const rpcUrl = getRpcUrl();
+  const chain = getChainForRpcUrl(rpcUrl);
+  const signer = createWalletTransactionSendingSigner({
+    wallet: session.wallet,
+    account: session.account,
+    chain,
+    rpcUrl,
+  });
+
+  const tournamentGroupAddress = await deriveTournamentGroupAddress(
+    input.tournamentTopic,
+    VAULT_PROGRAM_ADDRESS
+  );
+
+  const challengeAddress = await deriveChallengeAddress(
+    tournamentGroupAddress,
+    input.round,
+    input.pairIndex,
+    VAULT_PROGRAM_ADDRESS
+  );
+
+  const createChallengeInstruction = getCreateChallengeInstruction({
+    payer: signer,
+    tournamentGroup: tournamentGroupAddress,
+    challenge: challengeAddress,
+    pairIndex: input.pairIndex,
+  }, {
+    programAddress: VAULT_PROGRAM_ADDRESS,
+  });
+
+  const createChallengeSignature = await sendInstruction({
+    signer,
+    instruction: createChallengeInstruction,
+    rpcUrl,
+  });
+
+  return {
+    createChallengeSignature,
+    tournamentGroupAddress,
+    challengeAddress,
+  };
+}
+
+export interface EnterChallengeOnChainInput {
+  liveAddress: string;
+  tournamentTopic: string;
+}
+
+export interface EnterChallengeOnChainResult {
+  enterChallengeSignature: string;
+  tournamentGroupAddress: Address;
+}
+
+export async function enterChallengeOnChain(
+  input: EnterChallengeOnChainInput
+): Promise<EnterChallengeOnChainResult> {
+  let session = await sochal.getWalletStandardSession();
+
+  if (!session) {
+    console.warn("No wallet-standard session available, attempting reconnect fallback", { state: sochal.get() });
+
+    try {
+      const current = sochal.get().wallet;
+      if (current?.provider) {
+        await sochal.connect(current.provider as WalletProvider);
+        session = await sochal.getWalletStandardSession();
+      }
+    } catch (error) {
+      console.warn("Automatic wallet reconnect attempt failed:", error);
+    }
+
+    if (!session) {
+      throw new Error("Wallet-standard session unavailable. Please reconnect your wallet.");
+    }
+  }
+
+  const rpcUrl = getRpcUrl();
+  const chain = getChainForRpcUrl(rpcUrl);
+  const signer = createWalletTransactionSendingSigner({
+    wallet: session.wallet,
+    account: session.account,
+    chain,
+    rpcUrl,
+  });
+
+  const tournamentGroupAddress = await deriveTournamentGroupAddress(
+    input.tournamentTopic,
+    VAULT_PROGRAM_ADDRESS
+  );
+
+  const enterChallengeInstruction = getEnterChallengeInstruction({
+    creator: signer,
+    live: address(input.liveAddress),
+    tournamentGroup: tournamentGroupAddress,
+  }, {
+    programAddress: VAULT_PROGRAM_ADDRESS,
+  });
+
+  const enterChallengeSignature = await sendInstruction({
+    signer,
+    instruction: enterChallengeInstruction,
+    rpcUrl,
+  });
+
+  return {
+    enterChallengeSignature,
+    tournamentGroupAddress,
+  };
+}
+
+export interface TipChallengeOnChainInput {
+  challengeAddress: string;
+  amountSol: number;
+  creatorSide: number;
+}
+
+export interface TipChallengeOnChainResult {
+  tipChallengeSignature: string;
+  amountLamports: bigint;
+}
+
+export async function tipChallengeOnChain(
+  input: TipChallengeOnChainInput
+): Promise<TipChallengeOnChainResult> {
+  let session = await sochal.getWalletStandardSession();
+
+  if (!session) {
+    console.warn("No wallet-standard session available, attempting reconnect fallback", { state: sochal.get() });
+
+    try {
+      const current = sochal.get().wallet;
+      if (current?.provider) {
+        await sochal.connect(current.provider as WalletProvider);
+        session = await sochal.getWalletStandardSession();
+      }
+    } catch (error) {
+      console.warn("Automatic wallet reconnect attempt failed:", error);
+    }
+
+    if (!session) {
+      throw new Error("Wallet-standard session unavailable. Please reconnect your wallet.");
+    }
+  }
+
+  if (!Number.isInteger(input.creatorSide) || input.creatorSide < 0 || input.creatorSide > 255) {
+    throw new Error("creatorSide must be a valid creator side index.");
+  }
+
+  const rpcUrl = getRpcUrl();
+  const chain = getChainForRpcUrl(rpcUrl);
+  const signer = createWalletTransactionSendingSigner({
+    wallet: session.wallet,
+    account: session.account,
+    chain,
+    rpcUrl,
+  });
+
+  const amountLamports = BigInt(Math.round(input.amountSol * 1_000_000_000));
+  if (amountLamports <= 0n) {
+    throw new Error("Tip amount must be greater than zero.");
+  }
+
+  const tipChallengeInstruction = getTipChallengeInstruction({
+    fan: signer,
+    challenge: address(input.challengeAddress),
+    creatorSide: input.creatorSide,
+    amount: amountLamports,
+  }, {
+    programAddress: VAULT_PROGRAM_ADDRESS,
+  });
+
+  const tipChallengeSignature = await sendInstruction({
+    signer,
+    instruction: tipChallengeInstruction,
+    rpcUrl,
+  });
+
+  return {
+    tipChallengeSignature,
+    amountLamports,
+  };
+}
+
+export interface CloseChallengeOnChainInput {
+  challengeAddress: string;
+  tournamentGroupAddress: string;
+  winnerAddress: string;
+  loserAddress: string;
+  topTipperAddress: string;
+  prizeVaultAddress?: string;
+  treasuryAddress?: string;
+}
+
+export interface CloseChallengeOnChainResult {
+  closeChallengeSignature: string;
+}
+
+export async function closeChallengeOnChain(
+  input: CloseChallengeOnChainInput
+): Promise<CloseChallengeOnChainResult> {
+  let session = await sochal.getWalletStandardSession();
+
+  if (!session) {
+    console.warn("No wallet-standard session available, attempting reconnect fallback", { state: sochal.get() });
+
+    try {
+      const current = sochal.get().wallet;
+      if (current?.provider) {
+        await sochal.connect(current.provider as WalletProvider);
+        session = await sochal.getWalletStandardSession();
+      }
+    } catch (error) {
+      console.warn("Automatic wallet reconnect attempt failed:", error);
+    }
+
+    if (!session) {
+      throw new Error("Wallet-standard session unavailable. Please reconnect your wallet.");
+    }
+  }
+
+  const rpcUrl = getRpcUrl();
+  const chain = getChainForRpcUrl(rpcUrl);
+  const signer = createWalletTransactionSendingSigner({
+    wallet: session.wallet,
+    account: session.account,
+    chain,
+    rpcUrl,
+  });
+
+  const closeChallengeInstruction = await getCloseChallengeInstructionAsync({
+    challenge: address(input.challengeAddress),
+    tournamentGroup: address(input.tournamentGroupAddress),
+    winner: address(input.winnerAddress),
+    loser: address(input.loserAddress),
+    topTipper: address(input.topTipperAddress),
+    prizeVault: input.prizeVaultAddress
+      ? address(input.prizeVaultAddress)
+      : undefined,
+    treasury: input.treasuryAddress
+      ? address(input.treasuryAddress)
+      : undefined,
+  }, {
+    programAddress: VAULT_PROGRAM_ADDRESS,
+  });
+
+  const closeChallengeSignature = await sendInstruction({
+    signer,
+    instruction: closeChallengeInstruction,
+    rpcUrl,
+  });
+
+  return {
+    closeChallengeSignature,
+  };
+}
+
 export interface CreateLiveOnChainInput {
   topic: string;
   menuItems?: MenuItemArgs[];
 }
+
 
 export interface CreateLiveOnChainResult {
   createLiveSignature: string;
@@ -521,3 +865,5 @@ export async function createLiveOnChain(
     throw toErrorWithContext(error, "Failed to create live on-chain");
   }
 }
+
+

@@ -2,6 +2,7 @@
 
 import { useMemo, useRef, useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 
@@ -16,7 +17,6 @@ import { createLiveOnChain } from "@/lib/solana-live";
 import { TopicBadge } from "@/components/sochal/TopicBadge";
 import { SolAmount } from "@/components/sochal/SolAmount";
 import { ProfileSetupDialog } from "@/components/sochal/ProfileSetupDialog";
-import { BattleView } from "@/components/sochal/live/BattleView";
 
 import Image from "next/image";
 import { GoLiveModal } from "@/components/sochal/live/GoLiveModal";
@@ -109,7 +109,9 @@ export default function CreatorStudio() {
   const [challengeTab, setChallengeTab] = useState<"your" | "all" | "battle">("your");
   const [assignedBattles, setAssignedBattles] = useState<UpcomingBattle[]>([]);
   const [qualifiedCreators, setQualifiedCreators] = useState<QualifiedCreator[]>([]);
-  const [renderTimestamp, setRenderTimestamp] = useState<number>(() => Date.now());
+  const [, setRenderTimestamp] = useState<number>(() => Date.now());
+
+  const router = useRouter();
 
   const enterBattle = async (battleId: string) => {
     try {
@@ -122,6 +124,7 @@ export default function CreatorStudio() {
       const payload = await response.json();
       if (payload?.battle) {
         sochal.setActiveBattle(payload.battle);
+        router.push(`/battles/${payload.battle.id}`);
       }
     } catch (error) {
       console.warn("Failed to enter battle:", error);
@@ -184,26 +187,6 @@ export default function CreatorStudio() {
       clearInterval(interval);
     };
   }, [wallet]);
-
-  useEffect(() => {
-    if (!wallet || activeBattle || assignedBattles.length === 0) {
-      return;
-    }
-
-    const dueBattle = assignedBattles.find((battle) => {
-      const isMine =
-        battle.creatorA.walletAddress === wallet.address ||
-        battle.creatorB.walletAddress === wallet.address;
-
-      return isMine && battle.canEnterBattle && battle.battleStatus === "active";
-    });
-
-    if (!dueBattle) {
-      return;
-    }
-
-    void enterBattle(dueBattle.id);
-  }, [activeBattle, assignedBattles, wallet]);
 
   const handleManualRefresh = async () => {
     if (!wallet) return;
@@ -445,6 +428,7 @@ export default function CreatorStudio() {
     );
   }
 
+  /*
   if (
     activeBattle &&
     new Date(activeBattle.pairedAt as unknown as string).getTime() <= renderTimestamp
@@ -459,7 +443,7 @@ export default function CreatorStudio() {
         }
       />
     );
-  }
+  }*/
 
   const stats = [
     {
@@ -671,12 +655,89 @@ export default function CreatorStudio() {
                           <p className="text-sm font-semibold text-white">Assigned Battle Pair</p>
                         </div>
 
-                        {assignedBattles.length === 0 ? (
+                        {assignedBattles.length === 0 && activeBattle == null ? (
                           <p className="mt-3 text-sm text-gray-400">
                             No battle assignment yet. Once another qualified creator is matched, the platform will show your pair and schedule here.
                           </p>
                         ) : (
                           <div className="mt-4 space-y-3">
+                            {activeBattle ? (
+                              <div key={activeBattle.id} className="rounded-2xl border border-gray-700 bg-black/40 p-4">
+                                <p className="text-xs uppercase tracking-[0.2em] text-blue-300">Active Battle</p>
+                                <p className="mt-1 text-sm font-semibold text-white">
+                                  {activeBattle.title || "Battle challenge"}
+                                </p>
+                                <p className="mt-1 text-xs text-gray-400">Topic: {activeBattle.topic || "Unknown"}</p>
+
+                                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                                  <div className="rounded-2xl border border-gray-800 bg-zinc-950/80 p-3">
+                                    <div className="flex items-center gap-3">
+                                      <Image
+                                        src={activeBattle.creatorAAvatar || "/images/avatar-fallback.png"}
+                                        alt={activeBattle.creatorAName || "Creator A"}
+                                        width={44}
+                                        height={44}
+                                        className="rounded-full object-cover"
+                                        unoptimized
+                                      />
+                                      <div>
+                                        <p className="text-sm font-semibold text-white">{activeBattle.creatorAName || activeBattle.creatorA}</p>
+                                        <p className="text-xs text-gray-400">
+                                          {activeBattle.creatorAHandle ? `@${activeBattle.creatorAHandle}` : activeBattle.creatorA}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="mt-4 flex items-center justify-between text-sm text-amber-300">
+                                      <span>Tips</span>
+                                      <span>{(activeBattle.tipsA ?? 0).toFixed(1)} SOL</span>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-2xl border border-gray-800 bg-zinc-950/80 p-3">
+                                    <div className="flex items-center gap-3">
+                                      <Image
+                                        src={activeBattle.creatorBAvatar || "/images/avatar-fallback.png"}
+                                        alt={activeBattle.creatorBName || "Creator B"}
+                                        width={44}
+                                        height={44}
+                                        className="rounded-full object-cover"
+                                        unoptimized
+                                      />
+                                      <div>
+                                        <p className="text-sm font-semibold text-white">{activeBattle.creatorBName || activeBattle.creatorB || "Waiting for opponent"}</p>
+                                        <p className="text-xs text-gray-400">
+                                          {activeBattle.creatorBHandle ? `@${activeBattle.creatorBHandle}` : activeBattle.creatorB || ""}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <div className="mt-4 flex items-center justify-between text-sm text-amber-300">
+                                      <span>Tips</span>
+                                      <span>{(activeBattle.tipsB ?? 0).toFixed(1)} SOL</span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-3 text-sm text-gray-300">
+                                  <div className="flex items-center justify-between">
+                                    <span>Progress</span>
+                                    <span>{(activeBattle.currentSol ?? 0).toFixed(1)} / {(activeBattle.targetSol ?? 0).toFixed(1)} SOL</span>
+                                  </div>
+                                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-white/10">
+                                    <div
+                                      className="h-full rounded-full bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400"
+                                      style={{ width: `${activeBattle.targetSol ? Math.min(100, ((activeBattle.currentSol ?? 0) / activeBattle.targetSol) * 100) : 0}%` }}
+                                    />
+                                  </div>
+                                </div>
+
+                                <Button
+                                  className="mt-4 w-full bg-blue-600 hover:bg-blue-700"
+                                  onClick={() => enterBattle(activeBattle.id)}
+                                >
+                                  Enter Challenge
+                                </Button>
+                              </div>
+                            ) : null}
                             {assignedBattles.map((battle) => {
                               const meIsA = battle.creatorA.walletAddress === wallet.address;
                               const opponent = meIsA ? battle.creatorB : battle.creatorA;

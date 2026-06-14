@@ -1,10 +1,32 @@
 import { NextResponse } from "next/server";
-
-// In-memory store for messages per channel (replace with DB for production)
-const channelMessages: Map<string, any[]> = new Map();
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 export const fetchCache = "force-no-store";
+
+async function ensureLiveMessagesTable() {
+  await prisma.$executeRaw`
+    CREATE TABLE IF NOT EXISTS "LiveMessage" (
+      "id" TEXT PRIMARY KEY,
+      "liveId" TEXT,
+      "channelName" TEXT NOT NULL,
+      "userName" TEXT,
+      "displayName" TEXT,
+      "text" TEXT NOT NULL,
+      "isTip" BOOLEAN NOT NULL DEFAULT FALSE,
+      "createdAt" TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+  `;
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "LiveMessage_channelName_idx" ON "LiveMessage" ("channelName");
+  `;
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "LiveMessage_liveId_idx" ON "LiveMessage" ("liveId");
+  `;
+  await prisma.$executeRaw`
+    CREATE INDEX IF NOT EXISTS "LiveMessage_createdAt_idx" ON "LiveMessage" ("createdAt");
+  `;
+}
 
 export async function GET(request: Request) {
   try {
@@ -18,11 +40,36 @@ export async function GET(request: Request) {
       );
     }
 
-    const messages = channelMessages.get(channelName) || [];
+    await ensureLiveMessagesTable();
+
+    const messages = await prisma.$queryRaw<Array<{
+      id: string;
+      userName: string | null;
+      displayName: string | null;
+      text: string;
+      isTip: boolean;
+      createdAt: string;
+    }>>`
+      SELECT
+        "id",
+        "userName",
+        "displayName",
+        "text",
+        "isTip",
+        "createdAt"
+      FROM "LiveMessage"
+      WHERE "channelName" = ${channelName}
+      ORDER BY "createdAt" ASC
+      LIMIT 100;
+    `;
 
     return NextResponse.json({
       channelName,
-      messages,
+      messages: messages.map((message) => ({
+        ...message,
+        user: message.displayName || message.userName || "Anonymous",
+        timestamp: new Date(message.createdAt).getTime(),
+      })),
     });
   } catch (error) {
     console.error("Error fetching messages:", error);
@@ -52,28 +99,47 @@ export async function POST(request: Request) {
       );
     }
 
-    // Get or create message array for this channel
-    if (!channelMessages.has(channelName)) {
-      channelMessages.set(channelName, []);
-    }
+    await ensureLiveMessagesTable();
 
-    const messages = channelMessages.get(channelName)!;
+    const live = await prisma.live.findUnique({
+      where: { channelName },
+      select: { id: true },
+    });
+
+    const id = `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+    const now = new Date();
+
+    await prisma.$executeRaw`
+      INSERT INTO "LiveMessage" (
+        "id",
+        "liveId",
+        "channelName",
+        "userName",
+        "displayName",
+        "text",
+        "isTip",
+        "createdAt"
+      ) VALUES (
+        ${id},
+        ${live?.id ?? null},
+        ${channelName},
+        ${userName ?? null},
+        ${displayName ?? null},
+        ${text},
+        ${Boolean(isTip)},
+        ${now}
+      );
+    `;
 
     const newMessage = {
-      id: `${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      id,
       user: displayName || userName || "Anonymous",
       userName,
+      displayName,
       text,
       isTip: !!isTip,
-      timestamp: Date.now(),
+      timestamp: now.getTime(),
     };
-
-    messages.push(newMessage);
-
-    // Keep only the last 100 messages to avoid memory bloat
-    if (messages.length > 100) {
-      messages.shift();
-    }
 
     return NextResponse.json({
       success: true,

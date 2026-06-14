@@ -121,6 +121,22 @@ model Live {
   @@index([challengeId])
 }
 
+model LiveMessage {
+  id          String   @id @default(cuid())
+  liveId      String?  
+  live        Live?    @relation(fields: [liveId], references: [id], onDelete: SetNull)
+  channelName String
+  userName    String?
+  displayName String?
+  text        String
+  isTip       Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  @@index([liveId])
+  @@index([channelName])
+  @@index([createdAt])
+}
+
 model ChallengeCreator {
   id                    String                 @id @default(cuid())
   challengeId           String

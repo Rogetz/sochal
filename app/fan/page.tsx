@@ -59,8 +59,11 @@ export default function FanPage() {
         const liveData = liveResponse.ok ? await liveResponse.json() : { streams: [] };
         const battleData = battleResponse.ok ? await battleResponse.json() : { battles: [] };
 
+        const liveStreamsPayload = Array.isArray(liveData.streams) ? liveData.streams : [];
+        const uniqueLiveStreams = dedupeLiveStreams(liveStreamsPayload);
+
         if (active) {
-          setLiveStreams(Array.isArray(liveData.streams) ? liveData.streams : []);
+          setLiveStreams(uniqueLiveStreams);
           setLiveBattles(Array.isArray(battleData.battles) ? battleData.battles : []);
         }
       } catch {
@@ -80,6 +83,20 @@ export default function FanPage() {
       clearInterval(interval);
     };
   }, []);
+
+  const dedupeLiveStreams = (streams: unknown[]): LiveStream[] => {
+    const validStreams = Array.isArray(streams) ? streams : [];
+    return Array.from(
+      new Map(
+        validStreams
+          .filter((stream) => typeof stream === "object" && stream !== null && "id" in stream)
+          .map((stream) => {
+            const record = stream as LiveStream;
+            return [record.id, record];
+          }),
+      ).values(),
+    );
+  };
 
   useEffect(() => {
     let active = true;
@@ -153,7 +170,7 @@ export default function FanPage() {
       const liveData = liveResponse.ok ? await liveResponse.json() : { streams: [] };
       const battleData = battleResponse.ok ? await battleResponse.json() : { battles: [] };
 
-      setLiveStreams(Array.isArray(liveData.streams) ? liveData.streams : []);
+      setLiveStreams(dedupeLiveStreams(Array.isArray(liveData.streams) ? liveData.streams : []));
       setLiveBattles(Array.isArray(battleData.battles) ? battleData.battles : []);
     } catch (e) {
       console.warn("Manual refresh failed:", e);
@@ -171,15 +188,25 @@ export default function FanPage() {
     alert("Profile updated!");
   };
 
-  const forYouLives = useMemo(
-    () => liveStreams.filter((stream) => stream.isLive),
-    [liveStreams]
-  );
+  const forYouLives = useMemo(() => {
+    return Array.from(
+      new Map(
+        liveStreams
+          .filter((stream) => stream.isLive === true && typeof stream.id === "string" && stream.id)
+          .map((stream) => [stream.id, stream])
+      ).values()
+    ).sort((a, b) => b.startedAt - a.startedAt);
+  }, [liveStreams]);
 
-  const forYouBattles = useMemo(
-    () => liveBattles.filter((battle) => battle.status === "active"),
-    [liveBattles]
-  );
+  const forYouBattles = useMemo(() => {
+    return Array.from(
+      new Map(
+        liveBattles
+          .filter((battle) => battle.status === "active")
+          .map((battle) => [battle.id, battle])
+      ).values()
+    ).sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+  }, [liveBattles]);
 
   const hasForYouContent = forYouLives.length > 0 || forYouBattles.length > 0;
 
@@ -188,7 +215,7 @@ export default function FanPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen bg-black overflow-x-hidden">
       <div className="flex">
         {/* LEFT SIDEBAR */}
         <aside className="hidden lg:flex lg:flex-col lg:fixed lg:left-0 lg:top-0 lg:bottom-0 lg:w-64 lg:bg-black lg:border-r lg:border-gray-800 lg:p-4 lg:z-40">
@@ -237,8 +264,9 @@ export default function FanPage() {
         </nav>
 
         {/* MAIN CONTENT */}
-        <main className="flex-1 lg:ml-64 lg:mr-80">
-          {/* Top Header */}
+        <main className="flex-1 lg:ml-64 lg:mr-80 px-4 py-6 pb-24">
+          <div className="max-w-7xl mx-auto space-y-6">
+            {/* Top Header */}
           <div className="sticky top-0 z-30 bg-black/90 backdrop-blur-sm border-b border-gray-800">
             <div className="flex items-center justify-between px-4 py-3">
               <div className="lg:hidden flex items-center gap-2">
@@ -300,7 +328,7 @@ export default function FanPage() {
                           <Radio className="size-4 text-red-400" />
                           <h3 className="text-lg font-semibold text-white">Ongoing Lives</h3>
                         </div>
-                        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                           {forYouLives.map((stream) => (
                             <button
                               key={stream.id}
@@ -432,7 +460,7 @@ export default function FanPage() {
                     <p className="text-gray-500 text-sm mt-1">Check back in a moment for the next live stream.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {liveStreams.map((stream) => (
                     <button key={stream.id} onClick={() => handleJoinLive(stream.id)} className="relative aspect-[9/16] rounded-xl overflow-hidden bg-gradient-to-b from-gray-800 to-gray-900">
                       <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition" />
@@ -504,6 +532,7 @@ export default function FanPage() {
                 onCreateReel={() => setShowCreateReel(true)}
               />
             )}
+            </div>
           </div>
         </main>
 

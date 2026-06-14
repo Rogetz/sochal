@@ -1,16 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { useParams, useRouter } from "next/navigation";
 
 import { useSochal } from "@/lib/sochal-store";
-import { BattleView } from "@/components/sochal/live/BattleView";
+const SimpleAgoraStream = dynamic(
+  () => import("@/components/sochal/live/SimpleAgoraStream"),
+  { ssr: false }
+);
 import type { Battle } from "@/lib/battle-service";
 
 export default function BattlePage() {
   const params = useParams();
   const router = useRouter();
-  const { wallet } = useSochal();
+  const { wallet, profile } = useSochal();
 
   const battleId = params.battleId as string;
   const [battle, setBattle] = useState<Battle | null>(null);
@@ -76,35 +80,35 @@ export default function BattlePage() {
     );
   }
 
+  const battleChannelName = `battle_${battle.id}`;
+  const battleTitle = `${battle.creatorAName} vs ${battle.creatorBName}`;
+  const isBattleCreator =
+    wallet &&
+    (wallet.address === battle.creatorA || wallet.address === battle.creatorB);
+  const role: "host" | "audience" = isBattleCreator ? "host" : "audience";
+
+  const hostMetadata = isBattleCreator && wallet && profile ? {
+    ownerWallet: wallet.address,
+    handle: profile.handle || "Creator",
+    topic: (battle.topic as any) || "battle",
+    title: battle.title || "Battle",
+    targetSol: battle.targetSol,
+  } : undefined;
+
   return (
-    <BattleView
-      battle={battle}
-      currentCreatorWallet={wallet?.address ?? "viewer"}
+    <SimpleAgoraStream
+      channelName={battleChannelName}
+      role={role}
+      userName={profile?.displayName || wallet?.address || "Viewer"}
+      creatorName={battleTitle}
+      creatorHandle={battle.creatorAHandle ?? battle.creatorBHandle ?? undefined}
+      liveTargetSol={battle.targetSol}
+      liveTotalCollectedSol={battle.currentSol}
+      challengeTitle={battle.title}
+      hostMetadata={hostMetadata}
+      shareUrl={`/battles/${battle.id}`}
+      skipLiveMetadata={true}
       onEnd={() => router.push("/fan")}
-      onSendTip={(amount, creatorWallet) => {
-        setBattle((current) => {
-          if (!current) return current;
-
-          const nextBattle = {
-            ...current,
-            currentSol: current.currentSol + amount,
-            tipsA:
-              creatorWallet === current.creatorA
-                ? current.tipsA + amount
-                : current.tipsA,
-            tipsB:
-              creatorWallet === current.creatorB
-                ? current.tipsB + amount
-                : current.tipsB,
-          };
-
-          if (nextBattle.targetSol > 0 && nextBattle.currentSol >= nextBattle.targetSol) {
-            nextBattle.status = "completed";
-          }
-
-          return nextBattle;
-        });
-      }}
     />
   );
 }

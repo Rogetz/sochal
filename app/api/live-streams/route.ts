@@ -3,10 +3,8 @@ import { NextResponse } from "next/server";
 import type { Battle } from "@/lib/battle-service";
 import type { LiveStream, Topic } from "@/lib/sochal-store";
 import {
-  cleanStaleLiveRecords,
   deleteLiveRecord,
   getLiveRecord,
-  listLiveRecords,
   upsertLiveRecord,
   updateLiveRecord,
   type LiveStreamRecord,
@@ -166,24 +164,10 @@ function asLiveStream(record: LiveStreamRecord): LiveStream {
 }
 
 export async function GET(request: Request) {
-  cleanStaleLiveRecords();
-
   const { searchParams } = new URL(request.url);
   const channelName = searchParams.get("channelName");
 
   if (channelName) {
-    // Return a specific stream by channel name
-    const stream = getLiveRecord(channelName);
-
-    if (stream && stream.isLive) {
-      return NextResponse.json({
-        stream: {
-          ...asLiveStream(stream),
-          battle: await fetchPersistedBattle(channelName),
-        },
-      });
-    }
-
     const persistedStream = await fetchPersistedLiveStream(channelName);
 
     if (persistedStream && persistedStream.isLive) {
@@ -198,16 +182,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const streams = listLiveRecords()
-    .filter((stream) => stream.isLive)
-    .sort((a, b) => b.startedAt - a.startedAt)
-    .map(asLiveStream);
-
-  if (streams.length > 0) {
-    return NextResponse.json({ streams });
-  }
-
-  const persistedStreams = await prisma.live.findMany({
+  const activeLives = await prisma.live.findMany({
     where: { status: "ACTIVE" },
     orderBy: { startedAt: "desc" },
     include: {
@@ -232,30 +207,30 @@ export async function GET(request: Request) {
     },
   });
 
-  return NextResponse.json({
-    streams: persistedStreams.map((live) => {
-      const battle = live.battleAsCreatorA ?? live.battleAsCreatorB ?? null;
+  const streams = activeLives.map((live) => {
+    const battle = live.battleAsCreatorA ?? live.battleAsCreatorB ?? null;
 
-      return asLiveStream({
-        id: live.streamId,
-        channelName: live.channelName,
-        ownerWallet: live.ownerWalletAddress,
-        onChainAddress: live.onChainAddress ?? undefined,
-        challengeId: live.challengeId ?? undefined,
-        handle: live.owner.handle ?? "",
-        displayName: live.owner.displayName ?? live.owner.handle ?? live.ownerWalletAddress,
-        topic: live.topic as Topic,
-        title: live.title,
-        startedAt: live.startedAt.getTime(),
-        isLive: live.status === "ACTIVE",
-        potSol: Number(live.totalCollectedSol),
-        targetSol: Number(live.targetSol),
-        viewers: 0,
-        battle: battle ? serializeBattle(battle) : null,
-        updatedAt: live.updatedAt.getTime(),
-      });
-    }),
+    return {
+      id: live.streamId,
+      channelName: live.channelName,
+      ownerWallet: live.ownerWalletAddress,
+      onChainAddress: live.onChainAddress ?? undefined,
+      challengeId: live.challengeId ?? undefined,
+      handle: live.owner.handle ?? "",
+      displayName: live.owner.displayName ?? live.owner.handle ?? live.ownerWalletAddress,
+      topic: live.topic as Topic,
+      title: live.title,
+      startedAt: live.startedAt.getTime(),
+      isLive: live.status === "ACTIVE",
+      potSol: Number(live.totalCollectedSol),
+      targetSol: Number(live.targetSol),
+      viewers: 0,
+      battle: battle ? serializeBattle(battle) : null,
+      updatedAt: live.updatedAt.getTime(),
+    } satisfies LiveStreamRecord;
   });
+
+  return NextResponse.json({ streams });
 }
 
 export async function POST(request: Request) {
@@ -300,6 +275,47 @@ export async function POST(request: Request) {
       battle: null,
     });
 
+    await prisma.user.upsert({
+      where: { walletAddress: ownerWallet },
+      update: {
+        handle: handle || undefined,
+        displayName: displayName || undefined,
+      },
+      create: {
+        walletAddress: ownerWallet,
+        handle,
+        displayName,
+      },
+    });
+
+    await prisma.live.upsert({
+      where: { streamId: channelName },
+      update: {
+        channelName,
+        onChainAddress: onChainAddress || null,
+        challengeId: String(body.challengeId ?? "").trim() || null,
+        topic,
+        title,
+        targetSol: Number.isFinite(targetSol) ? targetSol : 0,
+        totalCollectedSol: Number.isFinite(potSol) ? potSol : 0,
+        status: "ACTIVE",
+        startedAt: new Date(now),
+        endedAt: null,
+      },
+      create: {
+        streamId: channelName,
+        channelName,
+        onChainAddress: onChainAddress || undefined,
+        ownerWalletAddress: ownerWallet,
+        challengeId: String(body.challengeId ?? "").trim() || undefined,
+        topic,
+        title,
+        targetSol: Number.isFinite(targetSol) ? targetSol : 0,
+        totalCollectedSol: Number.isFinite(potSol) ? potSol : 0,
+        status: "ACTIVE",
+      },
+    });
+
     return NextResponse.json({ ok: true, stream: asLiveStream(stream) });
   } catch (error) {
     console.error("Live stream registration error:", error);
@@ -323,35 +339,39 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const existing = getLiveRecord(channelName);
+    const viewerDelta = Number(body.viewerDelta ?? 0);
+    const potDelta = Number(body.potDelta ?? 0);
 
-    if (!existing) {
-      return NextResponse.json(
-        { error: "Stream not found" },
-        { status: 404 }
-      );
+    // Tip totals are persisted by the contributions API; this route
+    // keeps the in-memory live registry in sync for realtime viewers.
+    let next: LiveStreamRecord | null | undefined = getLiveRecord(channelName);
+
+    if (next) {
+      const nextViewers = Number.isFinite(viewerDelta)
+        ? Math.max(1, next.viewers + viewerDelta)
+        : next.viewers;
+
+      const nextPotSol = Number.isFinite(potDelta)
+        ? Math.max(0, next.potSol + potDelta)
+        : next.potSol;
+
+      next = updateLiveRecord(channelName, {
+        viewers: nextViewers,
+        potSol: nextPotSol,
+      });
     }
 
-    const viewerDelta = Number(body.viewerDelta ?? 0);
-    const nextViewers = Number.isFinite(viewerDelta)
-      ? Math.max(1, existing.viewers + viewerDelta)
-      : existing.viewers;
-
-    const potDelta = Number(body.potDelta ?? 0);
-    const nextPotSol = Number.isFinite(potDelta)
-      ? Math.max(0, existing.potSol + potDelta)
-      : existing.potSol;
-
-    const next = updateLiveRecord(channelName, {
-      viewers: nextViewers,
-      potSol: nextPotSol,
-    });
-
     if (!next) {
-      return NextResponse.json(
-        { error: "Stream not found" },
-        { status: 404 }
-      );
+      const persistedStream = await fetchPersistedLiveStream(channelName);
+
+      if (!persistedStream) {
+        return NextResponse.json(
+          { error: "Stream not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({ ok: true, stream: asLiveStream(persistedStream) });
     }
 
     return NextResponse.json({ ok: true, stream: asLiveStream(next) });

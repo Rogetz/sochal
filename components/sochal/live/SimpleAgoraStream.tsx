@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import dynamic from "next/dynamic";
 import {toast} from "sonner";
 import {
   Mic,
@@ -14,9 +13,6 @@ import {
   Gift,
   Share2,
   Send,
-  Volume2,
-  VolumeX,
-  FlipHorizontal,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -46,6 +42,8 @@ export interface SimpleAgoraStreamProps {
     title: string;
     targetSol: number;
   };
+  skipLiveMetadata?: boolean;
+  shareUrl?: string;
   onEnd: () => void;
 }
 
@@ -100,10 +98,12 @@ export default function SimpleAgoraStream({
   liveTotalCollectedSol,
   challengeTitle,
   hostMetadata,
+  skipLiveMetadata,
+  shareUrl,
   onEnd,
 }: SimpleAgoraStreamProps) {
   const localVideoRef = useRef<HTMLDivElement>(null);
-  const remoteVideoRef = useRef<HTMLDivElement>(null);
+  const remoteVideoContainersRef = useRef<Map<string | number, HTMLDivElement | null>>(new Map());
 
   const clientRef = useRef<any>(null);
   const localTracksRef = useRef<any[]>([]);
@@ -124,6 +124,22 @@ export default function SimpleAgoraStream({
 
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
+  const [remoteUsers, setRemoteUsers] = useState<any[]>([]);
+  const [remoteVideoActive, setRemoteVideoActive] = useState(false);
+
+  useEffect(() => {
+    remoteUsers.forEach((user) => {
+      const element = remoteVideoContainersRef.current.get(user.uid);
+      if (element && user.videoTrack) {
+        try{
+          user.videoTrack.play(element)
+        }
+        catch(error: any){
+          console.warn("Failed to play remote video track:", error);
+        };
+      }
+    });
+  }, [remoteUsers]);
 
   const [messages, setMessages] = useState<
     { user: string; userName?: string; text: string; isTip?: boolean; id?: string }[]
@@ -133,6 +149,22 @@ export default function SimpleAgoraStream({
       text: "🔥 Welcome to the live stream!",
     },
   ]);
+
+  const addRemoteUser = useCallback((user: any) => {
+    setRemoteUsers((prevUsers) => {
+      const existingIndex = prevUsers.findIndex((entry) => entry.uid === user.uid);
+      if (existingIndex >= 0) {
+        const nextUsers = [...prevUsers];
+        nextUsers[existingIndex] = user;
+        return nextUsers;
+      }
+      return [...prevUsers, user];
+    });
+  }, []);
+
+  const removeRemoteUser = useCallback((uid: string | number) => {
+    setRemoteUsers((prevUsers) => prevUsers.filter((entry) => entry.uid !== uid));
+  }, []);
 
   const [message, setMessage] = useState("");
 
@@ -295,7 +327,7 @@ export default function SimpleAgoraStream({
   }, []);
 
   const registerHostStream = async () => {
-    if (!hostMetadata) return;
+    if (!hostMetadata || skipLiveMetadata) return;
 
     await fetch("/api/live-streams", {
       method: "POST",
@@ -377,7 +409,7 @@ export default function SimpleAgoraStream({
       heartbeatRef.current = null;
     }
 
-    if (role === "audience" && viewerJoinedRef.current) {
+    if (role === "audience" && viewerJoinedRef.current && !skipLiveMetadata) {
       await fetch("/api/live-streams", {
         method: "PATCH",
         headers: {
@@ -393,15 +425,17 @@ export default function SimpleAgoraStream({
 
     if (shouldEndStream && role === "host") {
       streamingService.endStream(channelName);
-      await fetch("/api/live-streams", {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          channelName,
-        }),
-      });
+      if (!skipLiveMetadata) {
+        await fetch("/api/live-streams", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            channelName,
+          }),
+        });
+      }
     }
   }, [channelName, role]);
 
@@ -515,35 +549,47 @@ export default function SimpleAgoraStream({
 
         // Setup user-published event for receiving remote streams
         client.on("user-published", async (user: any, mediaType: any) => {
-          if (role !== "audience") {
-            return;
-          }
+          // ignore our own published events
+          if (user?.uid && user.uid === uidRef.current) return;
+          else{
+            try {
+              await client.subscribe(user, mediaType);
+              remoteUsersRef.current.set(user.uid, user);
+              addRemoteUser(user);
 
-          if (client.connectionState !== "CONNECTED") {
-            return;
-          }
-
-          try {
-            await client.subscribe(user, mediaType);
-            remoteUsersRef.current.set(user.uid, user);
-
-            if (mediaType === "video") {
-              if (remoteVideoRef.current) {
-                user.videoTrack.play(remoteVideoRef.current);
+              if (mediaType === "video") {
+                setRemoteVideoActive(true);
               }
-            }
 
-            if (mediaType === "audio") {
-              user.audioTrack.play();
+              if (mediaType === "audio" && user.audioTrack) {
+                user.audioTrack.play();
+              }
+            } catch (err: any) {
+              console.error("Subscribe error:", err);
             }
-          } catch (err: any) {
-            console.error("Subscribe error:", err);
           }
         });
 
         // Setup user-left event to remove remote streams
         client.on("user-left", (user: any) => {
           remoteUsersRef.current.delete(user.uid);
+          removeRemoteUser(user.uid);
+          if (remoteUsersRef.current.size === 0) {
+            setRemoteVideoActive(false);
+          }
+        });
+
+        client.on("user-unpublished", (user: any, mediaType: string) => {
+          if (mediaType === "video" || mediaType === "audio") {
+            if (remoteUsersRef.current.has(user.uid)) {
+              remoteUsersRef.current.delete(user.uid);
+              removeRemoteUser(user.uid);
+            }
+
+            if (remoteUsersRef.current.size === 0) {
+              setRemoteVideoActive(false);
+            }
+          }
         });
 
         // Setup user-info-updated for track updates
@@ -561,46 +607,47 @@ export default function SimpleAgoraStream({
 
         const joinUid = data.uid;
         console.log(`[Agora] Joining channel: ${channelName} with uid: ${joinUid}`);
-        
+
         await client.join(APP_ID, channelName, data.token, joinUid);
-        
+
+        // update local uidRef to the actual assigned uid so handlers can ignore self
+        uidRef.current = joinUid;
+
+        // Set appropriate client role immediately after join so hosts can publish/subscribe reliably
+        await client.setClientRole(role === "host" ? "host" : "audience");
+
         console.log(`[Agora] Successfully joined channel`);
 
-        // After joining, subscribe to any already-published remote users (ensures viewers see host when they join later)
-        if (role === "audience" && client.connectionState === "CONNECTED") {
-          const remoteUsers = (client.remoteUsers ?? []) as Array<any>;
-          try {
-            for (const ru of remoteUsers) {
-              try {
-                const remoteUser = ru as any;
+        // After joining, subscribe to any already-published remote users (ensures peers see each other)
+        const remoteUsers = (client.remoteUsers ?? []) as Array<any>;
+        try {
+          for (const ru of remoteUsers) {
+            try {
+              const remoteUser = ru as any;
 
-                if (remoteUser && remoteUser.uid !== joinUid) {
-                  // subscribe to published tracks
-                  if (remoteUser.hasVideo) {
-                    await client.subscribe(remoteUser, "video");
-                    if (remoteVideoRef.current && remoteUser.videoTrack) {
-                      remoteUser.videoTrack.play(remoteVideoRef.current);
-                    }
-                  }
-
-                  if (remoteUser.hasAudio) {
-                    await client.subscribe(remoteUser, "audio");
-                    if (remoteUser.audioTrack) remoteUser.audioTrack.play();
-                  }
-                  remoteUsersRef.current.set(remoteUser.uid, remoteUser);
+              if (remoteUser && remoteUser.uid !== uidRef.current) {
+                if (remoteUser.hasVideo) {
+                  await client.subscribe(remoteUser, "video");
+                  setRemoteVideoActive(true);
                 }
-              } catch (e) {
-                // ignore individual subscribe failures
-                console.warn("Failed subscribing to existing remote user", e);
+
+                if (remoteUser.hasAudio) {
+                  await client.subscribe(remoteUser, "audio");
+                  if (remoteUser.audioTrack) remoteUser.audioTrack.play();
+                }
+
+                remoteUsersRef.current.set(remoteUser.uid, remoteUser);
+                addRemoteUser(remoteUser);
               }
+            } catch (e) {
+              console.warn("Failed subscribing to existing remote user", e);
             }
-          } catch (e) {
-            // non-fatal
           }
+        } catch (e) {
+          // non-fatal
         }
 
-        // Set appropriate client role
-        await client.setClientRole(role === "host" ? "host" : "audience");
+        
 
         if (mounted) {
           console.log(`[Agora] Join complete, clearing loading state`);
@@ -610,7 +657,8 @@ export default function SimpleAgoraStream({
         }
 
         // HOST: Publish local video and audio
-        if (role === "host") {
+        // Added the client connection state to check if the user has connected before publishing
+        if (role === "host" && client.connectionState === "CONNECTED") {
           try {
             console.log(`[Agora] Creating microphone and camera tracks...`);
             const tracks = await AgoraRTC.createMicrophoneAndCameraTracks();
@@ -653,25 +701,27 @@ export default function SimpleAgoraStream({
               viewers: 1,
             });
 
-            void (async () => {
-              try {
-                await registerHostStream();
-                await sendHeartbeat();
+            if (!skipLiveMetadata) {
+              void (async () => {
+                try {
+                  await registerHostStream();
+                  await sendHeartbeat();
 
-                if (heartbeatRef.current) {
-                  clearInterval(heartbeatRef.current);
+                  if (heartbeatRef.current) {
+                    clearInterval(heartbeatRef.current);
+                  }
+
+                  heartbeatRef.current = setInterval(() => {
+                    sendHeartbeat().catch(() => {
+                      // no-op; stale stream cleanup handles transient failures
+                    });
+                  }, 15_000);
+                } catch (hostSyncError) {
+                  console.error("Host stream bookkeeping error:", hostSyncError);
                 }
-
-                heartbeatRef.current = setInterval(() => {
-                  sendHeartbeat().catch(() => {
-                    // no-op; stale stream cleanup handles transient failures
-                  });
-                }, 15_000);
-              } catch (hostSyncError) {
-                console.error("Host stream bookkeeping error:", hostSyncError);
-              }
-            })();
-          } else if (!viewerJoinedRef.current) {
+              })();
+            }
+          } else if (!viewerJoinedRef.current && !skipLiveMetadata) {
             void updateViewerPresence(1).catch((presenceError) => {
               console.warn("Viewer presence update failed:", presenceError);
             });
@@ -679,29 +729,31 @@ export default function SimpleAgoraStream({
           }
 
           // Fetch current stream metadata (viewers) and update local state
-          void (async () => {
-            try {
-              const res = await fetch(`/api/live-streams?channelName=${encodeURIComponent(channelName)}`, { cache: "no-store" });
-              if (res.ok) {
-                const body = await res.json();
-                const stream = body.stream;
-                if (stream && typeof stream.viewers === "number") {
-                  setViewers(stream.viewers);
+          if (!skipLiveMetadata) {
+            void (async () => {
+              try {
+                const res = await fetch(`/api/live-streams?channelName=${encodeURIComponent(channelName)}`, { cache: "no-store" });
+                if (res.ok) {
+                  const body = await res.json();
+                  const stream = body.stream;
+                  if (stream && typeof stream.viewers === "number") {
+                    setViewers(stream.viewers);
+                  }
+                  if (stream && typeof stream.potSol === "number") {
+                    setTips(stream.potSol);
+                  }
+                  if (stream && typeof stream.targetSol === "number") {
+                    setLiveTargetAmountSol(stream.targetSol);
+                  }
+                  if (stream && typeof stream.onChainAddress === "string") {
+                    setLiveOnChainAddress(stream.onChainAddress);
+                  }
                 }
-                if (stream && typeof stream.potSol === "number") {
-                  setTips(stream.potSol);
-                }
-                if (stream && typeof stream.targetSol === "number") {
-                  setLiveTargetAmountSol(stream.targetSol);
-                }
-                if (stream && typeof stream.onChainAddress === "string") {
-                  setLiveOnChainAddress(stream.onChainAddress);
-                }
+              } catch (e) {
+                // ignore metadata fetch errors
               }
-            } catch (e) {
-              // ignore metadata fetch errors
-            }
-          })();
+            })();
+          }
         }
       } catch (err: any) {
         const errorMsg = err instanceof Error ? err.message : String(err);
@@ -756,6 +808,19 @@ export default function SimpleAgoraStream({
 
       const cleanup = async () => {
         try {
+          if (
+            role === "host" &&
+            liveOnChainAddress &&
+            liveTargetAmountSol > 0 &&
+            tips >= liveTargetAmountSol
+          ) {
+            try {
+              await doCloseOnce(liveOnChainAddress, true);
+            } catch (error) {
+              console.error("Cleanup close live error:", error);
+            }
+          }
+
           await releaseAgoraResources({ endStream: role === "host" });
         } catch (e) {
           console.error("Cleanup error:", e);
@@ -764,7 +829,7 @@ export default function SimpleAgoraStream({
 
       cleanup();
     };
-  }, [channelName, role, releaseAgoraResources, stageBattleForAfterLiveEnd, transitionToBattle]);
+  }, [channelName, role, releaseAgoraResources, stageBattleForAfterLiveEnd, transitionToBattle, liveOnChainAddress, liveTargetAmountSol, tips, doCloseOnce]);
 
   // Poll for messages from API
   useEffect(() => {
@@ -784,24 +849,32 @@ export default function SimpleAgoraStream({
         if (!response.ok) return;
 
         const data = await response.json();
-        const apiMessages = data.messages || [];
+        const apiMessages = Array.isArray(data.messages) ? data.messages : [];
 
-        setMessages((prevMessages:any) => {
-          // Get IDs of existing messages to avoid duplicates
-          const existingIds = prevMessages
-            .map((m:any) => m.id)
-            .filter(Boolean);
+        const normalizedMessages = apiMessages
+          .filter((msg: any) => msg && typeof msg.id === "string" && msg.user !== "System")
+          .map((msg: any) => ({
+            ...msg,
+            timestamp: typeof msg.timestamp === "number" ? msg.timestamp : Date.now(),
+          }))
+          .sort((a: any, b: any) => a.timestamp - b.timestamp);
 
-          // Add only new messages from API
-          const newMessages = apiMessages.filter(
-            (m: any) =>
-              !existingIds.includes(m.id) && m.user !== "System"
-          );
+        setMessages((prevMessages: any[]) => {
+          const combined = [...prevMessages, ...normalizedMessages];
+          const seen = new Set<string>();
+          const merged = combined
+            .filter((message: any) => {
+              if (!message?.id || seen.has(message.id)) {
+                return false;
+              }
+              seen.add(message.id);
+              return true;
+            })
+            .sort((a: any, b: any) => a.timestamp - b.timestamp);
 
-          return newMessages.length > 0 ? [...prevMessages, ...newMessages] : prevMessages;
+          return merged;
         });
       } catch (err) {
-        // Silently fail on polling errors
         console.debug("Message polling error:", err);
       }
     };
@@ -824,6 +897,10 @@ export default function SimpleAgoraStream({
   }, [role, streamEnded]);
 
   useEffect(() => {
+    if (skipLiveMetadata) {
+      return;
+    }
+
     let poll: NodeJS.Timeout | null = null;
 
     const checkStream = async () => {
@@ -950,6 +1027,18 @@ export default function SimpleAgoraStream({
       if (!response.ok) {
         console.error("Failed to send message");
         return;
+      }
+
+      const payload = await response.json().catch(() => null);
+      const sentMessage = payload?.message;
+
+      if (sentMessage && sentMessage.id) {
+        setMessages((prevMessages: any[]) => {
+          if (prevMessages.some((msg) => msg.id === sentMessage.id)) {
+            return prevMessages;
+          }
+          return [...prevMessages, sentMessage];
+        });
       }
 
       // Trigger a refresh of messages
@@ -1129,7 +1218,9 @@ export default function SimpleAgoraStream({
 
   const shareStream = async () => {
     try {
-      const url = `${window.location.origin}/live/${channelName}`;
+      const url = shareUrl
+        ? `${window.location.origin}${shareUrl}`
+        : `${window.location.origin}/live/${channelName}`;
 
       await navigator.clipboard.writeText(url);
 
@@ -1207,16 +1298,92 @@ export default function SimpleAgoraStream({
     <div className="fixed inset-0 bg-black z-50 overflow-hidden">
       {/* VIDEO */}
       <div className="absolute inset-0">
-        {role === "host" ? (
-          <div
-            ref={localVideoRef}
-            className="w-full h-full"
-          />
+        <div ref={localVideoRef} className="absolute inset-0 w-full h-full" />
+
+        {role === "audience" ? (
+          <div className="absolute inset-0 w-full h-full">
+            {remoteUsers.length > 0 ? (
+              <div
+                className={`grid h-full w-full gap-2 ${
+                  remoteUsers.length === 1
+                    ? "grid-cols-1"
+                    : remoteUsers.length === 2
+                    ? "grid-cols-2"
+                    : "grid-cols-2 lg:grid-cols-3"
+                }`}
+              >
+                {remoteUsers.map((user) => (
+                  <div
+                    key={user.uid}
+                    className="relative overflow-hidden rounded-[28px] bg-black"
+                  >
+                    <div
+                      className="absolute inset-0"
+                      ref={(element) => {
+                        if (element) {
+                          remoteVideoContainersRef.current.set(user.uid, element);
+                          if (user.videoTrack) {
+                            user.videoTrack.play(element).catch((error: any) => {
+                              console.warn("Failed to play remote video track:", error);
+                            });
+                          }
+                        } else {
+                          remoteVideoContainersRef.current.delete(user.uid);
+                        }
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="absolute inset-0 flex items-center justify-center text-white">
+                <div className="text-center">
+                  <p className="text-xl font-semibold">Waiting for the creators to join</p>
+                  <p className="text-sm text-gray-300">The live room will begin once creators start streaming.</p>
+                </div>
+              </div>
+            )}
+          </div>
         ) : (
-          <div
-            ref={remoteVideoRef}
-            className="w-full h-full"
-          />
+          <div className="absolute bottom-5 right-5 z-20 w-[280px] h-[180px] overflow-hidden rounded-[28px] border border-white/10 bg-black/70 shadow-[0_20px_80px_rgba(0,0,0,0.5)]">
+            {remoteUsers.length > 0 ? (
+              <div className="grid h-full w-full gap-2 grid-cols-1">
+                {remoteUsers.map((user) => (
+                  <div
+                    key={user.uid}
+                    className="relative h-full overflow-hidden rounded-[28px] bg-black"
+                  >
+                    <div
+                      className="absolute inset-0"
+                      ref={(element) => {
+                        if (element) {
+                          remoteVideoContainersRef.current.set(user.uid, element);
+                          if (user.videoTrack) {
+                            try{
+                              user.videoTrack.play(element)
+                            }
+                            catch(error: any){
+                              console.warn("Failed to play remote video track:", error);
+                            };
+                          }
+                        } else {
+                          remoteVideoContainersRef.current.delete(user.uid);
+                        }
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-full flex-col items-center justify-center gap-2 p-4 text-center text-white">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-pink-500 text-3xl uppercase">
+                  {creatorHandle?.charAt(0) ?? creatorName?.charAt(0) ?? "?"}
+                </div>
+                <p className="text-sm font-semibold">Waiting for the other creator</p>
+                <p className="text-xs text-gray-300">Their camera will appear once they start streaming.</p>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -1341,17 +1508,21 @@ export default function SimpleAgoraStream({
           </div>
         </button>
 
-        <button onClick={shareStream}>
-          <div className="size-12 rounded-full bg-black/40 flex items-center justify-center">
-            <Share2 className="size-7 text-white" />
-          </div>
-        </button>
+        {shareUrl || !skipLiveMetadata ? (
+          <button onClick={shareStream}>
+            <div className="size-12 rounded-full bg-black/40 flex items-center justify-center">
+              <Share2 className="size-7 text-white" />
+            </div>
+          </button>
+        ) : null}
 
-        <button onClick={() => setShowGiftModal(true)} disabled={sendingAmount !== null}>
-          <div className="size-12 rounded-full bg-black/40 flex items-center justify-center">
-            <Gift className="size-7 text-yellow-400" />
-          </div>
-        </button>
+        {!skipLiveMetadata && (
+          <button onClick={() => setShowGiftModal(true)} disabled={sendingAmount !== null}>
+            <div className="size-12 rounded-full bg-black/40 flex items-center justify-center">
+              <Gift className="size-7 text-yellow-400" />
+            </div>
+          </button>
+        )}
       </div>
 
       {/* HOST CONTROLS */}
